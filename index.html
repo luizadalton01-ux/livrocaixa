@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Livro-Caixa">
+<meta name="theme-color" content="#16233A">
+<title>Livro-Caixa · Controle Financeiro</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>
+  // Carrega o Chart.js com CDNs alternativos de backup — se todos falharem
+  // (ex: sem internet), o app avisa o script principal e segue sem travar.
+  window.chartJsReady = false;
+  (function loadChartJs(sources, i){
+    if (i >= sources.length) { window.dispatchEvent(new Event('chartjs-unavailable')); return; }
+    var s = document.createElement('script');
+    s.src = sources[i];
+    s.onload = function(){ window.chartJsReady = true; window.dispatchEvent(new Event('chartjs-ready')); };
+    s.onerror = function(){ loadChartJs(sources, i + 1); };
+    document.head.appendChild(s);
+  })([
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js'
+  ]);
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+  :root{
+    --paper:#F6F4EC; --paper-raised:#FFFFFF; --ink:#16233A; --ledger:#1B4332; --ledger-light:#2D6A4F;
+    --gold:#C9A227; --brick:#B3432B; --line:#E1DCCB; --muted:#6B6553;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif;
+    height:100%; overscroll-behavior-y:none; }
+  #app{ display:flex; flex-direction:column; min-height:100vh; min-height:100dvh; }
+
+  /* ---- topbar ---- */
+  .topbar{ background:var(--ink); color:#fff; padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 16px 18px;
+    position:sticky; top:0; z-index:20; }
+  .topbar-row{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{ width:34px; height:34px; border-radius:8px; background:var(--gold); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:13px; flex-shrink:0; }
+  .brand-text h1{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; margin:0; display:flex; align-items:center; gap:7px; }
+  .version-badge{ font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; color:var(--ink);
+    background:var(--gold); border-radius:10px; padding:2px 7px; letter-spacing:0.3px; }
+  .brand-text p{ margin:0; font-size:11px; color:#AEB8C6; }
+  .install-btn{ margin-left:8px; background:var(--gold); color:var(--ink); border:none; border-radius:20px;
+    padding:7px 13px; font-size:11.5px; font-weight:700; font-family:'Inter',sans-serif; flex-shrink:0; }
+  .install-btn.hidden{ display:none; }
+  .icon-topbtn{ margin-left:auto; background:rgba(255,255,255,0.1); border:none; border-radius:8px; color:#fff;
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .icon-topbtn svg{ width:16px; height:16px; }
+  .balance-strip{ margin-top:14px; }
+  .balance-strip .label{ font-size:11px; color:#AEB8C6; margin:0; }
+  .balance-strip .value{ font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:600; margin:2px 0 0 0; }
+
+  /* ---- content ---- */
+  #content{ flex:1; padding:16px 14px 90px 14px; max-width:640px; width:100%; margin:0 auto; }
+  .stack{ display:flex; flex-direction:column; gap:16px; }
+
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .summary-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:13px; }
+  .summary-icon{ width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
+  .tone-ink .summary-icon{ background:#16233A1A; color:var(--ink); }
+  .tone-green .summary-icon{ background:#1B433220; color:var(--ledger); }
+  .tone-brick .summary-icon{ background:#B3432B1A; color:var(--brick); }
+  .tone-gold .summary-icon{ background:#C9A22726; color:#8A6D1A; }
+  .summary-label{ margin:0 0 3px 0; font-size:11px; color:var(--muted); }
+  .summary-value{ margin:0; font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:600; }
+
+  .panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .panel h2{ font-family:'Fraunces',serif; font-size:15px; font-weight:600; margin:0 0 12px 0; display:flex; align-items:center; gap:6px; }
+  .panel h2 .muted{ font-size:11px; font-weight:400; margin-left:2px; }
+  .chart-wrap{ position:relative; height:210px; }
+  .muted{ color:var(--muted); }
+  .small{ font-size:12px; }
+
+  .reminder-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+  .reminder-row{ display:flex; align-items:flex-start; gap:8px; padding:11px 2px; border-bottom:1px dashed var(--line); flex-wrap:wrap; }
+  .reminder-row:last-child{ border-bottom:none; }
+  .reminder-desc{ margin:0; font-weight:500; font-size:13.5px; }
+  .reminder-right{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .amount{ font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .amount.entrada{ color:var(--ledger); }
+  .amount.saida{ color:var(--brick); }
+
+  .stamp{ font-family:'Fraunces',serif; font-size:9px; font-weight:700; letter-spacing:0.5px; border:1.5px dashed;
+    border-radius:20px; padding:2px 8px; text-transform:uppercase; transform:rotate(-2deg); white-space:nowrap; }
+
+  .section-head{ display:flex; align-items:center; justify-content:space-between; }
+  .section-head h2{ font-family:'Fraunces',serif; font-size:18px; font-weight:600; margin:0; }
+
+  .filter-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ border:1px solid var(--line); background:var(--paper-raised); border-radius:20px; padding:6px 13px;
+    font-size:12px; color:var(--muted); }
+  .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  .account-grid{ display:flex; flex-direction:column; gap:10px; }
+  .account-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:14px 16px; position:relative; }
+  .account-card h3{ font-family:'Fraunces',serif; font-size:15px; margin:2px 0 8px 0; }
+  .account-balance{ font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:600; margin:0; }
+  .icon-btn{ background:none; border:none; padding:5px; border-radius:6px; color:var(--muted); }
+  .icon-btn.danger{ position:absolute; top:8px; right:8px; }
+
+  .ledger{ list-style:none; margin:0; padding:0; }
+  .ledger-row{ display:flex; align-items:center; gap:9px; padding:11px 2px; border-bottom:1px solid var(--line); }
+  .ledger-row:last-child{ border-bottom:none; }
+  .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .dot.entrada{ background:var(--ledger); }
+  .dot.saida{ background:var(--brick); }
+  .ledger-main{ flex:1; min-width:0; }
+  .ledger-desc{ margin:0; font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .empty{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:5px; padding:30px 10px; color:var(--muted); }
+  .empty-title{ margin:4px 0 0 0; font-weight:600; color:var(--ink); font-size:13.5px; }
+  .empty-hint{ margin:0; font-size:12px; }
+
+  /* ---- FAB ---- */
+  .fab{ position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 76px); width:54px; height:54px;
+    border-radius:50%; background:var(--ledger); color:#fff; border:none; font-size:26px; line-height:1;
+    box-shadow:0 6px 16px rgba(27,67,50,0.35); display:flex; align-items:center; justify-content:center; z-index:15; }
+  .fab.hidden{ display:none; }
+
+  /* ---- bottom nav ---- */
+  .bottomnav{ position:fixed; bottom:0; left:0; right:0; background:var(--paper-raised); border-top:1px solid var(--line);
+    display:flex; padding-bottom:env(safe-area-inset-bottom,0px); z-index:20; }
+  .nav-btn{ flex:1; background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:9px 2px 8px 2px; color:var(--muted); font-size:10.5px; font-family:'Inter',sans-serif; }
+  .nav-btn.active{ color:var(--ledger); }
+  .nav-btn svg{ width:20px; height:20px; }
+
+  /* ---- modal / bottom sheet ---- */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(22,35,58,0.45); z-index:30; display:flex; align-items:flex-end;
+    opacity:0; pointer-events:none; transition:opacity 0.2s ease; }
+  .modal-overlay.open{ opacity:1; pointer-events:auto; }
+  .modal-sheet{ background:var(--paper); width:100%; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0;
+    padding:8px 18px calc(env(safe-area-inset-bottom,0px) + 22px) 18px; transform:translateY(100%); transition:transform 0.25s ease; }
+  .modal-overlay.open .modal-sheet{ transform:translateY(0); }
+  .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:4px; margin:8px auto 14px auto; }
+  .sheet-title{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; margin:0 0 14px 0; display:flex; align-items:center; justify-content:space-between; }
+
+  .field{ display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); font-weight:500; margin-bottom:12px; }
+  .field input, .field select{ font-family:'Inter',sans-serif; font-size:15px; padding:11px 12px; border:1px solid var(--line);
+    border-radius:9px; background:#FCFBF7; color:var(--ink); width:100%; }
+  .field input:focus, .field select:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+  .checkbox-row{ display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:14px; }
+
+  .sheet-divider{ border-top:1px solid var(--line); margin:20px 0 16px 0; }
+  .changelog-list{ display:flex; flex-direction:column; gap:14px; max-height:260px; overflow-y:auto; }
+  .changelog-entry{ border-left:2px solid var(--line); padding-left:12px; }
+  .changelog-version{ margin:0 0 4px 0; font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:700; color:var(--ledger); }
+  .changelog-entry ul{ margin:0; padding-left:16px; }
+  .changelog-entry li{ font-size:12.5px; color:var(--ink); margin-bottom:3px; line-height:1.4; }
+
+  .segmented{ display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:12px; }
+  .segmented button{ flex:1; padding:11px 0; background:#FCFBF7; border:none; font-size:14px; font-family:'Inter',sans-serif; }
+  .segmented button.active{ background:var(--ledger); color:#fff; font-weight:600; }
+
+  .btn-primary{ background:var(--ledger); color:#fff; border:none; border-radius:9px; padding:13px 18px; font-size:14.5px;
+    font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:4px; }
+  .btn-ghost{ background:none; border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:12.5px;
+    color:var(--ink); font-family:'Inter',sans-serif; }
+
+  @media (min-width:680px){
+    .cards{ grid-template-columns:repeat(4,1fr); }
+    #content{ max-width:900px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand-mark">LC</div>
+      <div class="brand-text">
+        <h1>Livro-Caixa <span id="versionBadge" class="version-badge"></span></h1>
+        <p>entradas, saídas e contas</p>
+      </div>
+      <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      </button>
+      <button id="installBtn" class="install-btn hidden">Instalar app</button>
+    </div>
+    <div class="balance-strip">
+      <p class="label">Saldo total</p>
+      <p class="value" id="topBalance">R$ 0,00</p>
+    </div>
+  </header>
+
+  <main id="content"></main>
+
+  <button class="fab" id="fab">+</button>
+
+  <nav class="bottomnav">
+    <button class="nav-btn" data-tab="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      Visão geral
+    </button>
+    <button class="nav-btn" data-tab="accounts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>
+      Contas
+    </button>
+    <button class="nav-btn" data-tab="transactions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h15M9 18h12"/></svg>
+      Transações
+    </button>
+    <button class="nav-btn" data-tab="bills">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+      A pagar
+    </button>
+  </nav>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-sheet" id="modalSheet"></div>
+</div>
+
+<script>
+/* =========================== versão do app =========================== */
+const APP_VERSION = '1.4.0';
+const CHANGELOG = [
+  { v: '1.4.0', data: '2026-08-06', mudancas: [
+    'Controle de versão do app (versão visível + histórico de mudanças)',
+    'Cache do service worker agora é renovado automaticamente a cada nova versão',
+  ]},
+  { v: '1.3.0', data: '2026-08-06', mudancas: [
+    'Armazenamento migrado para IndexedDB (suporta bases de dados bem maiores)',
+    'Importação e exportação de dados (backup em .json)',
+    'Correção do carregamento dos gráficos com CDNs alternativos e modo de emergência sem travar o app',
+  ]},
+  { v: '1.2.0', data: '2026-08-06', mudancas: [
+    'App transformado em PWA instalável (ícone, tela cheia, funciona offline)',
+  ]},
+  { v: '1.1.0', data: '2026-08-06', mudancas: [
+    'Versão HTML única otimizada para celular, com navegação inferior e formulários deslizantes',
+  ]},
+  { v: '1.0.0', data: '2026-08-06', mudancas: [
+    'Primeira versão: contas bancárias, transações, contas a pagar e gráficos',
+  ]},
+];
+
+/* =========================== state & storage (IndexedDB) =========================== */
+// IndexedDB é usado em vez de localStorage porque suporta bases de dados
+// bem maiores (o localStorage tem limite de ~5MB em vários navegadores).
+const DB_NAME = 'livrocaixa_db', DB_STORE = 'kv';
+let accounts = [], transactions = [], bills = [];
+let activeTab = 'dashboard';
+let filterTipo = 'todos';
+let filterBills = 'pendentes';
+let barChart = null, pieChart = null;
+let dbPromise = null;
+
+function openDB(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(DB_STORE, { keyPath: 'key' }); };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e);
+  });
+  return dbPromise;
+}
+function idbGetAll(){
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const store = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE);
+    const out = {};
+    const req = store.openCursor();
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) { out[cursor.value.key] = cursor.value.value; cursor.continue(); }
+      else resolve(out);
+    };
+    req.onerror = (e) => reject(e);
+  }));
+}
+function idbSet(key, value){
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put({ key, value });
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e);
+  }));
+}
+
+function persist(){
+  idbSet('accounts', accounts).catch(() => {});
+  idbSet('transactions', transactions).catch(() => {});
+  idbSet('bills', bills).catch(() => {});
+}
+
+async function loadInitialState(){
+  try{
+    const stored = await idbGetAll();
+    if (stored.accounts || stored.transactions || stored.bills) {
+      accounts = stored.accounts || [];
+      transactions = stored.transactions || [];
+      bills = stored.bills || [];
+      return;
+    }
+    // migração única: se havia dados salvos na versão anterior (localStorage), traz para o IndexedDB
+    const oldA = localStorage.getItem('lc_accounts');
+    const oldT = localStorage.getItem('lc_transactions');
+    const oldB = localStorage.getItem('lc_bills');
+    if (oldA || oldT || oldB) {
+      accounts = oldA ? JSON.parse(oldA) : [];
+      transactions = oldT ? JSON.parse(oldT) : [];
+      bills = oldB ? JSON.parse(oldB) : [];
+      persist();
+    }
+  } catch(err){
+    console.error('Erro ao carregar dados salvos:', err);
+  }
+}
+
+/* =========================== helpers =========================== */
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const todayStr = () => new Date().toISOString().slice(0,10);
+const fmtBRL = (v) => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v || 0);
+const fmtDate = (d) => { if(!d) return ''; const [y,m,day] = d.split('-'); return `${day}/${m}/${y}`; };
+const monthLabel = (key) => { const [y,m] = key.split('-'); const n=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return `${n[parseInt(m,10)-1]}/${y.slice(2)}`; };
+const daysUntil = (dateStr) => { const t=new Date(todayStr()+'T00:00:00'); const d=new Date(dateStr+'T00:00:00'); return Math.round((d-t)/86400000); };
+const esc = (s) => (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const CAT_ENTRADA = ['Salário','Freelance','Investimentos','Reembolso','Outros'];
+const CAT_SAIDA = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Outros'];
+const PIE_COLORS = ['#1B4332','#C9A227','#B3432B','#2D6A4F','#7A6F52','#5B7B9A','#8C5E58','#4A4238'];
+
+function balanceOf(accId){
+  const acc = accounts.find(a => a.id === accId);
+  if(!acc) return 0;
+  const delta = transactions.filter(t => t.contaId === accId)
+    .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
+  return (acc.saldoInicial || 0) + delta;
+}
+function totalBalance(){ return accounts.reduce((s,a) => s + balanceOf(a.id), 0); }
+function billStatus(b){
+  if(b.pago) return 'pago';
+  const d = daysUntil(b.vencimento);
+  if(d < 0) return 'vencido';
+  if(d <= 7) return 'proximo';
+  return 'pendente';
+}
+function stampLabel(status){
+  return { pago:['PAGO','#1B4332'], vencido:['VENCIDO','#B3432B'], proximo:['A VENCER','#C9A227'], pendente:['PENDENTE','#5B7B9A'] }[status];
+}
+function emptyState(iconSvg, title, hint){
+  return `<div class="empty">${iconSvg}<p class="empty-title">${title}</p><p class="empty-hint">${hint}</p></div>`;
+}
+const ICONS = {
+  wallet:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
+  up:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 4-4 4 4M12 16V8"/></svg>',
+  down:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 4 4 4-4M12 8v8"/></svg>',
+  receipt:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+  empty1:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h15M9 18h12"/></svg>',
+  check:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+  bank:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>',
+  trash:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>',
+  warn:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B3432B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18.3-8.6-14.9a1.2 1.2 0 0 0-2.2 0L2.3 18.3a1.2 1.2 0 0 0 1.1 1.7h17.2a1.2 1.2 0 0 0 1.1-1.7Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+};
+
+/* =========================== render root =========================== */
+function render(){
+  document.getElementById('topBalance').textContent = fmtBRL(totalBalance());
+  const vb = document.getElementById('versionBadge');
+  if (vb) vb.textContent = 'v' + APP_VERSION;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
+  const fab = document.getElementById('fab');
+  fab.classList.toggle('hidden', activeTab === 'dashboard');
+
+  const c = document.getElementById('content');
+  if(activeTab === 'dashboard') c.innerHTML = renderDashboard();
+  else if(activeTab === 'accounts') c.innerHTML = renderAccounts();
+  else if(activeTab === 'transactions') c.innerHTML = renderTransactions();
+  else if(activeTab === 'bills') c.innerHTML = renderBills();
+
+  if(activeTab === 'dashboard') renderCharts();
+  persist();
+}
+
+/* =========================== dashboard =========================== */
+function renderDashboard(){
+  const thisMonth = todayStr().slice(0,7);
+  const monthEntradas = transactions.filter(t => t.tipo==='entrada' && t.data.slice(0,7)===thisMonth).reduce((s,t)=>s+t.valor,0);
+  const monthSaidas = transactions.filter(t => t.tipo==='saida' && t.data.slice(0,7)===thisMonth).reduce((s,t)=>s+t.valor,0);
+  const pendentes = bills.filter(b => !b.pago);
+  const upcoming = [...pendentes].sort((a,b)=>a.vencimento.localeCompare(b.vencimento)).slice(0,5);
+
+  const reminderHtml = upcoming.length ? `<ul class="reminder-list">${upcoming.map(b => {
+    const d = daysUntil(b.vencimento); const status = billStatus(b); const [label,color] = stampLabel(status);
+    return `<li class="reminder-row">
+      <div><p class="reminder-desc">${esc(b.descricao)}</p>
+      <p class="muted small">vence em ${fmtDate(b.vencimento)} · ${d<0?`${Math.abs(d)} dia(s) atrasado`:d===0?'vence hoje':`em ${d} dia(s)`}</p></div>
+      <div class="reminder-right"><span class="amount">${fmtBRL(b.valor)}</span>
+      <span class="stamp" style="border-color:${color};color:${color}">${label}</span></div>
+    </li>`;
+  }).join('')}</ul>` : emptyState(ICONS.check,'Nada pendente','Suas contas a pagar aparecerão aqui.');
+
+  return `<div class="stack">
+    <section class="cards">
+      <div class="summary-card tone-ink"><div class="summary-icon">${ICONS.wallet}</div><p class="summary-label">Saldo total</p><p class="summary-value">${fmtBRL(totalBalance())}</p></div>
+      <div class="summary-card tone-green"><div class="summary-icon">${ICONS.up}</div><p class="summary-label">Entradas do mês</p><p class="summary-value">${fmtBRL(monthEntradas)}</p></div>
+      <div class="summary-card tone-brick"><div class="summary-icon">${ICONS.down}</div><p class="summary-label">Saídas do mês</p><p class="summary-value">${fmtBRL(monthSaidas)}</p></div>
+      <div class="summary-card tone-gold"><div class="summary-icon">${ICONS.receipt}</div><p class="summary-label">Contas pendentes</p><p class="summary-value">${pendentes.length}</p></div>
+    </section>
+
+    <div class="panel"><h2>Entradas x Saídas <span class="muted">últimos 6 meses</span></h2>
+      <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+    </div>
+
+    <div class="panel"><h2>Saídas por categoria <span class="muted">mês atual</span></h2>
+      <div class="chart-wrap" id="pieWrap"><canvas id="pieChart"></canvas></div>
+    </div>
+
+    <div class="panel"><h2>Próximos vencimentos</h2>${reminderHtml}</div>
+  </div>`;
+}
+
+function renderCharts(){
+  if (typeof Chart === 'undefined') { renderChartsFallback(); return; }
+  const now = new Date();
+  const map = {};
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    map[key] = { mes: monthLabel(key), entradas:0, saidas:0 };
+  }
+  transactions.forEach(t => { const key=t.data.slice(0,7); if(map[key]) map[key][t.tipo==='entrada'?'entradas':'saidas'] += t.valor; });
+  const monthly = Object.values(map);
+
+  if(barChart) barChart.destroy();
+  const barCtx = document.getElementById('barChart');
+  if(barCtx){
+    barChart = new Chart(barCtx, {
+      type:'bar',
+      data:{ labels: monthly.map(m=>m.mes), datasets:[
+        { label:'Entradas', data: monthly.map(m=>m.entradas), backgroundColor:'#1B4332', borderRadius:4 },
+        { label:'Saídas', data: monthly.map(m=>m.saidas), backgroundColor:'#B3432B', borderRadius:4 },
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ font:{ family:'Inter', size:11 } } },
+          tooltip:{ callbacks:{ label:(ctx)=> ` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}` } } },
+        scales:{ x:{ grid:{ display:false }, ticks:{ font:{ size:10.5 } } },
+          y:{ grid:{ color:'#E1DCCB' }, ticks:{ font:{ size:10 }, callback:(v)=> 'R$'+(v>=1000?(v/1000)+'k':v) } } }
+      }
+    });
+  }
+
+  const thisMonth = todayStr().slice(0,7);
+  const pmap = {};
+  transactions.filter(t => t.tipo==='saida' && t.data.slice(0,7)===thisMonth).forEach(t => { pmap[t.categoria]=(pmap[t.categoria]||0)+t.valor; });
+  const pieEntries = Object.entries(pmap);
+
+  const pieWrap = document.getElementById('pieWrap');
+  if(pieChart) pieChart.destroy();
+  if(pieEntries.length && pieWrap){
+    pieWrap.innerHTML = '<canvas id="pieChart"></canvas>';
+    pieChart = new Chart(document.getElementById('pieChart'), {
+      type:'doughnut',
+      data:{ labels: pieEntries.map(e=>e[0]), datasets:[{ data: pieEntries.map(e=>e[1]), backgroundColor: PIE_COLORS }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Inter', size:11 }, boxWidth:10 } },
+          tooltip:{ callbacks:{ label:(ctx)=> ` ${ctx.label}: ${fmtBRL(ctx.raw)}` } } } }
+    });
+  } else if(pieWrap){
+    pieWrap.outerHTML = emptyState(ICONS.receipt,'Nenhuma saída este mês','As categorias de gasto aparecem aqui.');
+  }
+}
+
+function renderChartsFallback(){
+  const msg = emptyState(ICONS.receipt, 'Gráficos indisponíveis', 'Não foi possível carregar os gráficos agora (verifique sua conexão). Seus dados continuam salvos normalmente.');
+  const barWrap = document.getElementById('barChart');
+  if (barWrap) barWrap.closest('.chart-wrap').outerHTML = msg;
+  const pieWrap = document.getElementById('pieWrap');
+  if (pieWrap) pieWrap.outerHTML = msg;
+}
+
+/* =========================== accounts =========================== */
+function renderAccounts(){
+  const body = accounts.length ? `<div class="account-grid">${accounts.map(a => `
+    <div class="account-card">
+      <button class="icon-btn danger" data-action="delete-account" data-id="${a.id}">${ICONS.trash}</button>
+      <p class="muted small">${esc(a.banco)||'—'} · ${esc(a.tipo)}</p>
+      <h3>${esc(a.nome)}</h3>
+      <p class="account-balance" style="color:${balanceOf(a.id)<0?'#B3432B':'#1B4332'}">${fmtBRL(balanceOf(a.id))}</p>
+    </div>`).join('')}</div>` : emptyState(ICONS.bank,'Nenhuma conta cadastrada','Cadastre suas contas bancárias para organizar seu dinheiro.');
+
+  return `<div class="stack">
+    <div class="section-head"><h2>Contas bancárias</h2></div>
+    ${body}
+  </div>`;
+}
+
+/* =========================== transactions =========================== */
+function renderTransactions(){
+  const accountName = (id) => { const a = accounts.find(x=>x.id===id); return a ? esc(a.nome) : '—'; };
+  const list = [...transactions].filter(t => filterTipo==='todos' || t.tipo===filterTipo).sort((a,b)=>b.data.localeCompare(a.data));
+
+  const filters = `<div class="filter-row">${['todos','entrada','saida'].map(f => `
+    <button class="chip ${filterTipo===f?'active':''}" data-action="filter-transactions" data-value="${f}">
+      ${f==='todos'?'Todas':f==='entrada'?'Entradas':'Saídas'}
+    </button>`).join('')}</div>`;
+
+  const body = list.length ? `<ul class="ledger">${list.map(t => `
+    <li class="ledger-row">
+      <span class="dot ${t.tipo}"></span>
+      <div class="ledger-main">
+        <p class="ledger-desc">${esc(t.descricao)}</p>
+        <p class="muted small">${fmtDate(t.data)} · ${esc(t.categoria)} · ${accountName(t.contaId)}</p>
+      </div>
+      <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
+      <button class="icon-btn danger" data-action="delete-transaction" data-id="${t.id}">${ICONS.trash}</button>
+    </li>`).join('')}</ul>` : emptyState(ICONS.empty1,'Nenhuma transação','Lance sua primeira entrada ou saída.');
+
+  const warn = !accounts.length ? `<p class="muted small">Cadastre uma conta bancária antes de lançar transações.</p>` : '';
+
+  return `<div class="stack">
+    <div class="section-head"><h2>Transações</h2></div>
+    ${warn}
+    ${filters}
+    ${body}
+  </div>`;
+}
+
+/* =========================== bills =========================== */
+function renderBills(){
+  const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
+    .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
+
+  const filters = `<div class="filter-row">${['pendentes','pagas','todas'].map(f => `
+    <button class="chip ${filterBills===f?'active':''}" data-action="filter-bills" data-value="${f}">
+      ${f[0].toUpperCase()+f.slice(1)}
+    </button>`).join('')}</div>`;
+
+  const body = list.length ? `<ul class="reminder-list">${list.map(b => {
+    const status = billStatus(b); const [label,color] = stampLabel(status); const d = daysUntil(b.vencimento);
+    return `<li class="reminder-row">
+      ${status==='vencido' ? ICONS.warn : ''}
+      <div style="flex:1">
+        <p class="reminder-desc">${esc(b.descricao)} ${b.recorrente ? '<span class="muted small">(recorrente)</span>' : ''}</p>
+        <p class="muted small">vence ${fmtDate(b.vencimento)} · ${esc(b.categoria)}
+          ${!b.pago ? ' · ' + (d<0?`${Math.abs(d)} dia(s) atrasado`:d===0?'vence hoje':`em ${d} dia(s)`) : ''}
+          ${b.pago ? ' · pago em ' + fmtDate(b.dataPagamento) : ''}</p>
+      </div>
+      <div class="reminder-right">
+        <span class="amount">${fmtBRL(b.valor)}</span>
+        <span class="stamp" style="border-color:${color};color:${color}">${label}</span>
+        ${!b.pago ? `<button class="btn-ghost" data-action="mark-paid" data-id="${b.id}">Marcar paga</button>` : ''}
+        <button class="icon-btn danger" data-action="delete-bill" data-id="${b.id}">${ICONS.trash}</button>
+      </div>
+    </li>`;
+  }).join('')}</ul>` : emptyState(ICONS.receipt,'Nada por aqui','Cadastre contas a pagar para acompanhar vencimentos.');
+
+  return `<div class="stack">
+    <div class="section-head"><h2>Contas a pagar</h2></div>
+    ${filters}
+    ${body}
+  </div>`;
+}
+
+/* =========================== modal / forms =========================== */
+const overlay = document.getElementById('modalOverlay');
+const sheet = document.getElementById('modalSheet');
+function openModal(html){
+  sheet.innerHTML = `<div class="sheet-handle"></div>${html}`;
+  overlay.classList.add('open');
+}
+function closeModal(){ overlay.classList.remove('open'); }
+overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); });
+
+function openAccountForm(){
+  openModal(`
+    <p class="sheet-title">Nova conta bancária</p>
+    <form id="accountForm">
+      <div class="field"><span>Nome da conta</span><input name="nome" placeholder="Ex: Conta principal" required></div>
+      <div class="field"><span>Banco</span><input name="banco" placeholder="Ex: Nubank"></div>
+      <div class="field"><span>Tipo</span>
+        <select name="tipo"><option>Corrente</option><option>Poupança</option><option>Carteira</option><option>Investimento</option></select>
+      </div>
+      <div class="field"><span>Saldo inicial (R$)</span><input name="saldoInicial" type="number" step="0.01" placeholder="0,00"></div>
+      <button class="btn-primary" type="submit">Salvar conta</button>
+    </form>`);
+}
+
+function openTransactionForm(){
+  if(!accounts.length){ openAccountForm(); return; }
+  openModal(`
+    <p class="sheet-title">Nova transação</p>
+    <form id="transactionForm">
+      <div class="segmented" id="tipoSeg">
+        <button type="button" class="active" data-tipo="entrada">Entrada</button>
+        <button type="button" data-tipo="saida">Saída</button>
+      </div>
+      <input type="hidden" name="tipo" value="entrada">
+      <div class="field"><span>Valor (R$)</span><input name="valor" type="number" step="0.01" placeholder="0,00" required></div>
+      <div class="field"><span>Data</span><input name="data" type="date" value="${todayStr()}" required></div>
+      <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Supermercado"></div>
+      <div class="field"><span>Categoria</span><select name="categoria" id="catSelect">${CAT_ENTRADA.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><span>Conta</span><select name="contaId" required><option value="" disabled selected>Selecione</option>${accounts.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
+      <button class="btn-primary" type="submit">Lançar</button>
+    </form>`);
+  document.getElementById('tipoSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tipo]'); if(!btn) return;
+    document.querySelectorAll('#tipoSeg button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector('#transactionForm input[name="tipo"]').value = btn.dataset.tipo;
+    const catSelect = document.getElementById('catSelect');
+    catSelect.innerHTML = (btn.dataset.tipo==='entrada'?CAT_ENTRADA:CAT_SAIDA).map(c=>`<option>${c}</option>`).join('');
+  });
+}
+
+function openBillForm(){
+  openModal(`
+    <p class="sheet-title">Nova conta a pagar</p>
+    <form id="billForm">
+      <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Aluguel" required></div>
+      <div class="field"><span>Valor (R$)</span><input name="valor" type="number" step="0.01" placeholder="0,00" required></div>
+      <div class="field"><span>Vencimento</span><input name="vencimento" type="date" value="${todayStr()}" required></div>
+      <div class="field"><span>Categoria</span><select name="categoria">${CAT_SAIDA.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
+      <label class="checkbox-row"><input type="checkbox" name="recorrente"><span>Conta recorrente (mensal)</span></label>
+      <button class="btn-primary" type="submit">Salvar</button>
+    </form>`);
+}
+
+document.body.addEventListener('submit', (e) => {
+  if(e.target.id === 'accountForm'){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    accounts.push({ id:uid(), nome:f.get('nome').trim(), banco:f.get('banco').trim(), tipo:f.get('tipo'), saldoInicial: parseFloat(f.get('saldoInicial'))||0 });
+    closeModal(); render();
+  }
+  if(e.target.id === 'transactionForm'){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    transactions.push({ id:uid(), tipo:f.get('tipo'), valor:parseFloat(f.get('valor')), data:f.get('data'),
+      descricao:(f.get('descricao')||'').trim()||'(sem descrição)', categoria:f.get('categoria'), contaId:f.get('contaId') });
+    closeModal(); render();
+  }
+  if(e.target.id === 'billForm'){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    bills.push({ id:uid(), descricao:f.get('descricao').trim(), valor:parseFloat(f.get('valor')), vencimento:f.get('vencimento'),
+      categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false });
+    closeModal(); render();
+  }
+});
+
+/* =========================== delegated actions =========================== */
+document.body.addEventListener('click', (e) => {
+  const navBtn = e.target.closest('.nav-btn');
+  if(navBtn){ activeTab = navBtn.dataset.tab; render(); return; }
+
+  if(e.target.id === 'fab' || e.target.closest('#fab')){
+    if(activeTab==='accounts') openAccountForm();
+    else if(activeTab==='transactions') openTransactionForm();
+    else if(activeTab==='bills') openBillForm();
+    return;
+  }
+
+  const btn = e.target.closest('[data-action]');
+  if(!btn) return;
+  const action = btn.dataset.action;
+
+  if(action === 'delete-account'){
+    accounts = accounts.filter(a => a.id !== btn.dataset.id);
+    transactions = transactions.filter(t => t.contaId !== btn.dataset.id);
+    render();
+  }
+  if(action === 'delete-transaction'){
+    transactions = transactions.filter(t => t.id !== btn.dataset.id);
+    render();
+  }
+  if(action === 'delete-bill'){
+    bills = bills.filter(b => b.id !== btn.dataset.id);
+    render();
+  }
+  if(action === 'mark-paid'){
+    const bill = bills.find(b => b.id === btn.dataset.id);
+    if(bill){
+      bill.pago = true; bill.dataPagamento = todayStr();
+      if(bill.contaId){
+        transactions.push({ id:uid(), tipo:'saida', valor:bill.valor, data:todayStr(), descricao:bill.descricao, categoria:bill.categoria, contaId:bill.contaId });
+      }
+    }
+    render();
+  }
+  if(action === 'filter-transactions'){ filterTipo = btn.dataset.value; render(); }
+  if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
+});
+
+/* =========================== chart.js load listeners =========================== */
+window.addEventListener('chartjs-ready', () => { if (activeTab === 'dashboard') renderCharts(); });
+window.addEventListener('chartjs-unavailable', () => { if (activeTab === 'dashboard') renderChartsFallback(); });
+
+/* =========================== import / export =========================== */
+function openDataSheet(){
+  const changelogHtml = CHANGELOG.map(c => `
+    <div class="changelog-entry">
+      <p class="changelog-version">v${c.v} <span class="muted small">· ${fmtDate(c.data)}</span></p>
+      <ul>${c.mudancas.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
+    </div>`).join('');
+
+  openModal(`
+    <p class="sheet-title">Dados do app</p>
+    <p class="muted small" style="margin:-6px 0 16px 0">Importar substitui todas as contas, transações e contas a pagar atuais pelas do arquivo.</p>
+    <div class="field"><span>Importar arquivo (.json)</span><input type="file" id="importFile" accept="application/json,.json"></div>
+    <button class="btn-primary" id="importBtn" type="button">Importar dados</button>
+    <button class="btn-ghost" id="exportBtn" type="button" style="width:100%; margin-top:10px; text-align:center;">Exportar backup (.json)</button>
+    <p class="muted small" id="importStatus" style="margin-top:10px;"></p>
+
+    <div class="sheet-divider"></div>
+    <p class="sheet-title" style="font-size:15px;">Sobre esta versão</p>
+    <p class="muted small" style="margin:-8px 0 12px 0">Versão instalada: <strong style="color:var(--ink)">v${APP_VERSION}</strong></p>
+    <div class="changelog-list">${changelogHtml}</div>
+  `);
+}
+
+document.body.addEventListener('click', (e) => {
+  if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
+
+  if (e.target.id === 'exportBtn') {
+    const payload = JSON.stringify({ accounts, transactions, bills }, null, 0);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `livro-caixa-backup-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  if (e.target.id === 'importBtn') {
+    const fileInput = document.getElementById('importFile');
+    const status = document.getElementById('importStatus');
+    const file = fileInput && fileInput.files[0];
+    if (!file) { if (status) status.textContent = 'Selecione um arquivo .json primeiro.'; return; }
+    if (status) status.textContent = 'Importando...';
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('formato inválido');
+        accounts = data.accounts;
+        transactions = data.transactions;
+        bills = Array.isArray(data.bills) ? data.bills : [];
+        closeModal();
+        render();
+      } catch (err) {
+        if (status) status.textContent = 'Não foi possível importar: arquivo inválido.';
+      }
+    };
+    reader.onerror = () => { if (status) status.textContent = 'Erro ao ler o arquivo.'; };
+    reader.readAsText(file);
+  }
+});
+
+/* =========================== init =========================== */
+loadInitialState().then(render);
+
+/* =========================== PWA: service worker + install prompt =========================== */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById("installBtn");
+  if (btn) btn.classList.remove("hidden");
+});
+document.body.addEventListener("click", (e) => {
+  if (e.target.id === "installBtn" || e.target.closest("#installBtn")) {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.finally(() => {
+      deferredInstallPrompt = null;
+      const btn = document.getElementById("installBtn");
+      if (btn) btn.classList.add("hidden");
+    });
+  }
+});
+window.addEventListener("appinstalled", () => {
+  const btn = document.getElementById("installBtn");
+  if (btn) btn.classList.add("hidden");
+});
+</script>
+</body>
+</html>
