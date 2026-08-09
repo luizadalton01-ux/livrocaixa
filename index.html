@@ -106,6 +106,7 @@
   .section-head h2{ font-family:'Fraunces',serif; font-size:18px; font-weight:600; margin:0; }
 
   .filter-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .notif-status{ margin:-4px 0 4px 0; }
   .chip{ border:1px solid var(--line); background:var(--paper-raised); border-radius:20px; padding:6px 13px;
     font-size:12px; color:var(--muted); }
   .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
@@ -154,7 +155,7 @@
 
   .tx-layout{ display:flex; gap:10px; align-items:flex-start; }
   .tx-sidebar{ flex:0 0 148px; width:148px; display:flex; flex-direction:column; gap:4px;
-    max-height:min(560px, 70vh); overflow-y:auto; background:var(--paper-raised); border:1px solid var(--line);
+    background:var(--paper-raised); border:1px solid var(--line);
     border-radius:12px; padding:8px; }
   .acct-chip{ background:none; border:none; border-radius:8px; padding:9px 8px; font-size:12.5px; line-height:1.3;
     font-family:'Inter',sans-serif; color:var(--ink); text-align:left; word-break:break-word; }
@@ -307,8 +308,14 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.18.0';
 const CHANGELOG = [
+  { v: '1.18.0', data: '2026-08-09', mudancas: [
+    'Importar um arquivo .json agora também envia os dados para a nuvem automaticamente (quando conectado), mantendo todos os aparelhos iguais',
+    'Coluna de contas na aba Transações agora mostra a lista inteira, sem cortar com rolagem interna',
+    'Confirmação obrigatória ao marcar uma transação como "já consolidada" pela lista',
+    'Notificações de vencimento: 1 dia antes (11h e 15h) e no dia (a cada 2h, das 10h às 22h), até a conta ser marcada como paga',
+  ]},
   { v: '1.17.1', data: '2026-08-09', mudancas: [
     'Corrigido: o envio de dados para a nuvem podia ser interrompido (ex: tela travar) e mesmo assim mostrar "concluído" — agora ele confere o que realmente chegou lá e avisa se algo falhou',
     'Status de sincronização agora mostra "Conectando...", "Sincronizado" ou "Erro de sincronização" no topo do app e no menu Dados do app',
@@ -652,6 +659,71 @@ async function syncAllToFirebase(onProgress){
     releaseWakeLockSafe();
   }
   return true;
+}
+
+/* =========================== notificações de vencimento =========================== */
+// Aviso: funciona de forma confiável enquanto o app está aberto (em primeiro ou segundo
+// plano) neste aparelho. Navegadores móveis (principalmente iPhone) não garantem acordar
+// o app sozinho quando ele está totalmente fechado para disparar notificações no horário
+// exato — nesse caso, abrir o app brevemente já dispara os avisos pendentes.
+let notifiedSlots = {};
+const BILL_REMINDER_SLOTS_DIA_ANTES = [11, 15];
+const BILL_REMINDER_SLOTS_VENCIMENTO = [10, 12, 14, 16, 18, 20, 22];
+
+async function loadNotifiedSlots(){
+  try { const stored = await idbGetAll(); notifiedSlots = stored.notifiedSlots || {}; }
+  catch(e){ notifiedSlots = {}; }
+}
+async function saveNotifiedSlots(){
+  try { await idbSet('notifiedSlots', notifiedSlots); } catch(e){}
+}
+function notificationsSupported(){ return typeof Notification !== 'undefined'; }
+function notificationsGranted(){ return notificationsSupported() && Notification.permission === 'granted'; }
+
+async function requestNotificationPermission(){
+  if(!notificationsSupported()) return 'unsupported';
+  try { return await Notification.requestPermission(); }
+  catch(e){ return 'denied'; }
+}
+
+async function fireBillNotification(bill, days){
+  const title = days === 1 ? 'Conta vence amanhã' : 'Conta vence hoje';
+  const body = `${bill.descricao} — ${fmtBRL(bill.valor)}`;
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: `bill-${bill.id}-${todayStr()}`, renotify: true };
+  try {
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.getRegistration();
+      if(reg){ await reg.showNotification(title, opts); return; }
+    }
+    new Notification(title, opts);
+  } catch(e){ console.warn('Falha ao mostrar notificação', e); }
+}
+
+function checkBillReminders(){
+  if(!notificationsGranted()) return;
+  const now = new Date();
+  const hour = now.getHours();
+  const todayKey = todayStr();
+  let changed = false;
+  bills.forEach(bill => {
+    if(bill.pago) return;
+    const dias = daysUntil(bill.vencimento);
+    let slots = [];
+    if(dias === 1) slots = BILL_REMINDER_SLOTS_DIA_ANTES;
+    else if(dias === 0) slots = BILL_REMINDER_SLOTS_VENCIMENTO;
+    else return;
+    slots.forEach(slotHour => {
+      if(hour === slotHour){
+        const key = `${bill.id}|${todayKey}|${slotHour}`;
+        if(!notifiedSlots[key]){
+          fireBillNotification(bill, dias);
+          notifiedSlots[key] = true;
+          changed = true;
+        }
+      }
+    });
+  });
+  if(changed) saveNotifiedSlots();
 }
 
 /* =========================== helpers =========================== */
@@ -1103,6 +1175,14 @@ function renderBills(){
   const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
     .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
 
+  const notifSupported = notificationsSupported();
+  const notifPerm = notifSupported ? Notification.permission : 'unsupported';
+  const notifHtml = !notifSupported ? '' : notifPerm === 'granted'
+    ? `<p class="muted small notif-status">🔔 Notificações de vencimento ativadas (1 dia antes às 11h/15h, e no dia a cada 2h das 10h às 22h, até marcar como paga)</p>`
+    : notifPerm === 'denied'
+    ? `<p class="muted small notif-status">🔕 Notificações bloqueadas nas configurações do navegador. Ative manualmente para receber avisos de vencimento.</p>`
+    : `<button class="btn-ghost" data-action="enable-notifications" style="margin-bottom:2px;">🔔 Ativar notificações de vencimento</button>`;
+
   const filters = `<div class="filter-row">${['pendentes','pagas','todas'].map(f => `
     <button class="chip ${filterBills===f?'active':''}" data-action="filter-bills" data-value="${f}">
       ${f[0].toUpperCase()+f.slice(1)}
@@ -1145,6 +1225,7 @@ function renderBills(){
 
   return `<div class="stack">
     <div class="section-head"><h2>Contas a pagar</h2></div>
+    ${notifHtml}
     ${filters}
     ${body}
     ${naoConsolidadasPanel}
@@ -1596,13 +1677,24 @@ document.body.addEventListener('click', (e) => {
   if(action === 'open-search'){ openSearchSheet(); }
   if(action === 'open-accounts-toggle'){ openAccountsToggleSheet(); }
   if(action === 'save-cloud'){ saveToCloud(); }
+  if(action === 'enable-notifications'){
+    requestNotificationPermission().then((perm) => {
+      if(perm === 'granted'){ checkBillReminders(); }
+      render();
+    });
+  }
   if(action === 'open-account-statement'){ openAccountStatement(btn.dataset.id); }
   if(action === 'edit-transaction'){ openEditTransactionForm(btn.dataset.id); }
   if(action === 'add-tx-to-account'){ openTransactionForm(btn.dataset.id); }
   if(action === 'toggle-consolidado'){
     const tx = transactions.find(x => x.id === btn.dataset.id);
     if(tx){
-      tx.consolidado = !tx.consolidado;
+      const marcandoComoConsolidada = !tx.consolidado;
+      if(marcandoComoConsolidada){
+        const ok = confirm(`Confirma que esta transação já foi consolidada (efetivada no banco)?\n\n${tx.descricao} — ${fmtBRL(tx.valor)}`);
+        if(!ok) return;
+      }
+      tx.consolidado = marcandoComoConsolidada;
       fsSetDoc('transactions', tx);
     }
     persist();
@@ -1816,7 +1908,7 @@ document.body.addEventListener('click', (e) => {
     if (!file) { if (status) status.textContent = 'Selecione um arquivo .json primeiro.'; return; }
     if (status) status.textContent = 'Importando...';
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const data = JSON.parse(reader.result);
         if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('formato inválido');
@@ -1827,6 +1919,10 @@ document.body.addEventListener('click', (e) => {
         migrateData();
         closeModal();
         render();
+        if(fbReady){
+          if(status) status.textContent = 'Enviando dados importados para a nuvem...';
+          await syncAllToFirebase(() => {});
+        }
       } catch (err) {
         if (status) status.textContent = 'Não foi possível importar: arquivo inválido.';
       }
@@ -1837,7 +1933,13 @@ document.body.addEventListener('click', (e) => {
 });
 
 /* =========================== init =========================== */
-loadInitialState().then(() => { render(); initFirebase(); });
+loadInitialState().then(async () => {
+  render();
+  initFirebase();
+  await loadNotifiedSlots();
+  checkBillReminders();
+  setInterval(checkBillReminders, 15 * 60 * 1000);
+});
 
 /* =========================== PWA: service worker + install prompt =========================== */
 if ("serviceWorker" in navigator) {

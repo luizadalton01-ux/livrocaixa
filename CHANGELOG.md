@@ -3,6 +3,12 @@
 Todas as mudanças relevantes do app são registradas aqui, por versão.
 O número da versão também aparece dentro do app (topo da tela) e no menu "Dados do app" (ícone ⬇).
 
+## [1.18.0] — 2026-08-09
+- Importar um arquivo .json agora também envia os dados para a nuvem automaticamente (quando conectado), mantendo todos os aparelhos iguais
+- Coluna de contas na aba Transações agora mostra a lista inteira, sem cortar com rolagem interna
+- Confirmação obrigatória ao marcar uma transação como "já consolidada" pela lista
+- Notificações de vencimento: 1 dia antes (11h e 15h) e no dia (a cada 2h, das 10h às 22h), até a conta ser marcada como paga
+
 ## [1.17.1] — 2026-08-09
 - Corrigido: o envio de dados para a nuvem podia ser interrompido (ex: tela travar) e mesmo assim mostrar "concluído" — agora ele confere o que realmente chegou lá e avisa se algo falhou
 - Status de sincronização agora mostra "Conectando...", "Sincronizado" ou "Erro de sincronização" no topo do app e no menu Dados do app
