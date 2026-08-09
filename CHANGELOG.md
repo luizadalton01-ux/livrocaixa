@@ -3,6 +3,11 @@
 Todas as mudanças relevantes do app são registradas aqui, por versão.
 O número da versão também aparece dentro do app (topo da tela) e no menu "Dados do app" (ícone ⬇).
 
+## [1.17.1] — 2026-08-09
+- Corrigido: o envio de dados para a nuvem podia ser interrompido (ex: tela travar) e mesmo assim mostrar "concluído" — agora ele confere o que realmente chegou lá e avisa se algo falhou
+- Status de sincronização agora mostra "Conectando...", "Sincronizado" ou "Erro de sincronização" no topo do app e no menu Dados do app
+- Menu Dados do app agora mostra quantas contas/transações/contas a pagar existem neste aparelho, para comparar com a nuvem
+
 ## [1.17.0] — 2026-08-08
 - Sincronização em nuvem com Firebase: várias pessoas usando o app conseguem salvar e excluir contas, transações e contas a pagar com os dados sincronizados em tempo real
 - Novo painel "Sincronização em nuvem" no menu Dados do app, para conectar, desconectar e enviar os dados locais para a nuvem

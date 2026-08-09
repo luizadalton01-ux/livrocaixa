@@ -29,27 +29,9 @@
     'https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js'
   ]);
 </script>
-<script>
-  // Carrega o SDK do Firebase em segundo plano (sem travar o carregamento da página).
-  // Antes esses 3 scripts eram tags <script> normais no <head>, o que obriga o navegador
-  // a baixá-los por completo antes de terminar de carregar a página — em conexões de
-  // celular mais lentas isso é o que fazia a barra de carregamento do navegador ficar
-  // presa por muito tempo acima do título do app.
-  window.firebaseSdkReady = false;
-  window.firebaseSdkFailed = false;
-  (function loadFirebaseSdk(sources, i){
-    if (i >= sources.length) { window.firebaseSdkReady = true; window.dispatchEvent(new Event('firebase-sdk-ready')); return; }
-    var s = document.createElement('script');
-    s.src = sources[i];
-    s.onload = function(){ loadFirebaseSdk(sources, i + 1); };
-    s.onerror = function(){ window.firebaseSdkFailed = true; window.dispatchEvent(new Event('firebase-sdk-unavailable')); };
-    document.head.appendChild(s);
-  })([
-    'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js',
-    'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js'
-  ]);
-</script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
 
@@ -65,19 +47,6 @@
   /* ---- topbar ---- */
   .topbar{ background:var(--ink); color:#fff; padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 16px 18px;
     position:sticky; top:0; z-index:20; }
-  /* ---- barra de status da sincronização (acima do título) ---- */
-  .sync-bar{ position:absolute; top:0; left:0; right:0; height:3px; overflow:hidden;
-    background:rgba(255,255,255,0.14); opacity:0; transition:opacity .25s ease; }
-  .sync-bar.show{ opacity:1; }
-  .sync-bar .fill{ height:100%; width:35%; border-radius:0 2px 2px 0; background:#8FD9B0; }
-  .sync-bar.state-connecting .fill{ animation:syncbar-sweep 1.1s ease-in-out infinite; }
-  .sync-bar.state-synced .fill{ width:100%; background:#8FD9B0; animation:none; }
-  .sync-bar.state-error .fill{ width:100%; background:#E08E75; animation:none; }
-  @keyframes syncbar-sweep{
-    0%{ transform:translateX(-100%); }
-    50%{ transform:translateX(140%); }
-    100%{ transform:translateX(320%); }
-  }
   .topbar-row{ display:flex; align-items:center; gap:10px; }
   .brand-mark{ width:34px; height:34px; border-radius:8px; background:var(--gold); color:var(--ink);
     display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:13px; flex-shrink:0; }
@@ -291,7 +260,6 @@
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="sync-bar" id="syncBar"><div class="fill"></div></div>
     <div class="topbar-row">
       <div class="brand-mark">LC</div>
       <div class="brand-text">
@@ -339,13 +307,12 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.17.1';
 const CHANGELOG = [
-  { v: '1.18.0', data: '2026-08-08', mudancas: [
-    'Corrigido: o selo "Sincronizado" aparecia assim que o app se conectava à nuvem, mesmo antes de os dados terem realmente chegado — agora ele só aparece depois de confirmar o download das contas, transações e contas a pagar',
-    'Nova barra de status acima do título: mostra "carregando" enquanto conecta/baixa os dados da nuvem e um aviso de erro quando não consegue sincronizar',
-    'O SDK do Firebase agora carrega em segundo plano, sem travar o carregamento inicial do app em conexões lentas',
-    'Renomeado o botão "Salvar na nuvem" da Visão geral para "Backup (.json)", já que ele apenas baixa/compartilha um arquivo local e não envia dados para o Firebase',
+  { v: '1.17.1', data: '2026-08-09', mudancas: [
+    'Corrigido: o envio de dados para a nuvem podia ser interrompido (ex: tela travar) e mesmo assim mostrar "concluído" — agora ele confere o que realmente chegou lá e avisa se algo falhou',
+    'Status de sincronização agora mostra "Conectando...", "Sincronizado" ou "Erro de sincronização" no topo do app e no menu Dados do app',
+    'Menu Dados do app agora mostra quantas contas/transações/contas a pagar existem neste aparelho, para comparar com a nuvem',
   ]},
   { v: '1.17.0', data: '2026-08-08', mudancas: [
     'Sincronização em nuvem com Firebase: várias pessoas usando o app conseguem salvar e excluir contas, transações e contas a pagar com os dados sincronizados em tempo real',
@@ -522,13 +489,8 @@ async function loadInitialState(){
 // Cada dispositivo guarda sua própria cópia local (IndexedDB) para funcionar offline.
 // Quando configurado, o Firebase Firestore sincroniza contas, transações e contas a pagar
 // em tempo real entre todos os aparelhos conectados ao mesmo projeto.
-let fbApp = null, fbDb = null, fbReady = false, fbSyncing = false;
+let fbApp = null, fbDb = null, fbReady = false, fbSyncing = false, fbConnecting = false, fbError = false;
 let fbUnsubscribers = [];
-// Estado real da sincronização, exibido na barra/selo do topo:
-// 'idle' = nenhuma nuvem configurada · 'connecting' = conectando/baixando dados
-// 'synced' = conectado E já confirmou os dados vindos da nuvem · 'error' = falhou
-let fbStatus = 'idle';
-let fbCollectionsLoaded = { accounts:false, bills:false, transactions:false };
 
 async function loadFirebaseConfig(){
   try { const stored = await idbGetAll(); return stored.firebaseConfig || null; }
@@ -537,72 +499,37 @@ async function loadFirebaseConfig(){
 async function saveFirebaseConfig(configObj){ await idbSet('firebaseConfig', configObj); }
 async function clearFirebaseConfig(){ await idbSet('firebaseConfig', null); }
 
-// Espera o SDK do Firebase (carregado em segundo plano, ver <head>) terminar de
-// carregar, com um limite de tempo para não travar o app numa conexão ruim.
-function waitForFirebaseSdk(timeoutMs){
-  return new Promise((resolve) => {
-    if(window.firebaseSdkReady) return resolve(true);
-    if(window.firebaseSdkFailed) return resolve(false);
-    let done = false;
-    const cleanup = () => { clearTimeout(timer); window.removeEventListener('firebase-sdk-ready', onReady); window.removeEventListener('firebase-sdk-unavailable', onFail); };
-    const onReady = () => { if(done) return; done = true; cleanup(); resolve(true); };
-    const onFail = () => { if(done) return; done = true; cleanup(); resolve(false); };
-    const timer = setTimeout(() => { if(done) return; done = true; cleanup(); resolve(false); }, timeoutMs || 15000);
-    window.addEventListener('firebase-sdk-ready', onReady);
-    window.addEventListener('firebase-sdk-unavailable', onFail);
-  });
-}
-
 function updateSyncBadge(){
   const el = document.getElementById('syncBadge');
-  if(el){
-    el.textContent = fbStatus === 'connecting' ? '☁ Conectando…'
-      : fbStatus === 'synced' ? '☁ Sincronizado'
-      : fbStatus === 'error' ? '⚠ Erro ao sincronizar'
-      : '';
-  }
-  const bar = document.getElementById('syncBar');
-  if(bar){
-    bar.classList.remove('state-connecting', 'state-synced', 'state-error', 'show');
-    clearTimeout(window._syncBarTimeout);
-    if(fbStatus === 'connecting'){
-      bar.classList.add('show', 'state-connecting');
-    } else if(fbStatus === 'error'){
-      bar.classList.add('show', 'state-error');
-    } else if(fbStatus === 'synced'){
-      bar.classList.add('show', 'state-synced');
-      window._syncBarTimeout = setTimeout(() => bar.classList.remove('show'), 1400);
-    }
-  }
+  if(!el) return;
+  if(fbConnecting) el.textContent = '☁ Conectando...';
+  else if(fbReady) el.textContent = '☁ Sincronizado';
+  else if(fbError) el.textContent = '⚠ Erro de sincronização';
+  else el.textContent = '';
 }
 
 async function initFirebase(){
   fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
   fbUnsubscribers = [];
   fbReady = false;
-  fbCollectionsLoaded = { accounts:false, bills:false, transactions:false };
+  fbError = false;
   const config = await loadFirebaseConfig();
-  if(!config || !config.apiKey){ fbStatus = 'idle'; updateSyncBadge(); return; }
-  fbStatus = 'connecting';
+  if(!config || !config.apiKey || typeof firebase === 'undefined'){ updateSyncBadge(); return; }
+  fbConnecting = true;
   updateSyncBadge();
-  const sdkOk = await waitForFirebaseSdk(15000);
-  if(!sdkOk || typeof firebase === 'undefined'){
-    console.warn('Firebase: SDK não carregou (sem internet ou CDN bloqueado).');
-    fbStatus = 'error';
-    updateSyncBadge();
-    return;
-  }
   try{
     fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
     fbDb = firebase.firestore();
     await firebase.auth().signInAnonymously();
     fbReady = true;
+    fbConnecting = false;
     attachFirestoreListeners();
     updateSyncBadge();
   } catch(e){
     console.warn('Falha ao iniciar Firebase:', e);
     fbReady = false;
-    fbStatus = 'error';
+    fbConnecting = false;
+    fbError = true;
     updateSyncBadge();
   }
 }
@@ -624,55 +551,44 @@ function applyDocChanges(collectionKey, arrRef, changes){
 
 function attachFirestoreListeners(){
   if(!fbReady) return;
-  // Só mostra "Sincronizado" depois que as 3 coleções confirmaram o primeiro
-  // retorno da nuvem (mesmo que estejam vazias) — antes disso fica "Conectando…".
-  const markLoaded = (key) => {
-    fbCollectionsLoaded[key] = true;
-    if(fbCollectionsLoaded.accounts && fbCollectionsLoaded.bills && fbCollectionsLoaded.transactions){
-      fbStatus = 'synced';
-      updateSyncBadge();
-    }
-  };
-  const onError = (label) => (err) => {
-    console.warn(`${label} listener error`, err);
-    fbStatus = 'error';
-    updateSyncBadge();
-  };
-
   fbUnsubscribers.push(fbDb.collection('accounts').onSnapshot((snap) => {
+    fbError = false; updateSyncBadge();
     if(applyDocChanges('accounts', accounts, snap.docChanges())){ migrateData(); persist(); render(); }
-    markLoaded('accounts');
-  }, onError('accounts')));
+  }, (err) => { console.warn('accounts listener error', err); fbError = true; updateSyncBadge(); }));
 
   fbUnsubscribers.push(fbDb.collection('bills').onSnapshot((snap) => {
     if(applyDocChanges('bills', bills, snap.docChanges())){ persist(); render(); }
-    markLoaded('bills');
-  }, onError('bills')));
+  }, (err) => { console.warn('bills listener error', err); fbError = true; updateSyncBadge(); }));
 
   fbUnsubscribers.push(fbDb.collection('transactions').onSnapshot((snap) => {
     if(applyDocChanges('transactions', transactions, snap.docChanges())){ migrateData(); persist(); render(); }
-    markLoaded('transactions');
-  }, onError('transactions')));
+  }, (err) => { console.warn('transactions listener error', err); fbError = true; updateSyncBadge(); }));
 }
 
 async function fsSetDoc(collectionName, doc){
   if(!fbReady) return;
   try { await fbDb.collection(collectionName).doc(doc.id).set(doc); }
-  catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); }
+  catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
   if(!fbReady) return;
   try { await fbDb.collection(collectionName).doc(id).delete(); }
-  catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); }
+  catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
-async function fsBatchSet(collectionName, docs){
-  if(!fbReady || !docs.length) return;
+async function fsBatchSet(collectionName, docs, onChunk){
+  if(!fbReady || !docs.length) return { ok: 0, fail: 0 };
   const CHUNK = 400;
+  let ok = 0, fail = 0;
   for(let i = 0; i < docs.length; i += CHUNK){
+    const chunk = docs.slice(i, i + CHUNK);
     const batch = fbDb.batch();
-    docs.slice(i, i + CHUNK).forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha no envio em lote', e); }
+    chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
+    try { await batch.commit(); ok += chunk.length; }
+    catch(e){ console.warn('Firestore: falha no envio em lote', e); fail += chunk.length; fbError = true; }
+    if(onChunk) onChunk(ok + fail, docs.length);
   }
+  updateSyncBadge();
+  return { ok, fail };
 }
 async function fsBatchDelete(collectionName, ids){
   if(!fbReady || !ids.length) return;
@@ -680,20 +596,61 @@ async function fsBatchDelete(collectionName, ids){
   for(let i = 0; i < ids.length; i += CHUNK){
     const batch = fbDb.batch();
     ids.slice(i, i + CHUNK).forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha na exclusão em lote', e); }
+    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
   }
 }
+async function fsCollectionCount(collectionName){
+  if(!fbReady) return null;
+  try {
+    if(fbDb.collection(collectionName).count){
+      const snap = await fbDb.collection(collectionName).count().get();
+      return snap.data().count;
+    }
+    const snap = await fbDb.collection(collectionName).get();
+    return snap.size;
+  } catch(e){ console.warn('Firestore: falha ao contar', e); return null; }
+}
+
+let fbWakeLock = null;
+async function requestWakeLockSafe(){
+  try { if('wakeLock' in navigator) fbWakeLock = await navigator.wakeLock.request('screen'); }
+  catch(e){ /* best-effort, ignora se não suportado */ }
+}
+function releaseWakeLockSafe(){
+  try { if(fbWakeLock){ fbWakeLock.release(); fbWakeLock = null; } } catch(e){}
+}
+
 async function syncAllToFirebase(onProgress){
   if(!fbReady) return false;
   fbSyncing = true;
-  if(onProgress) onProgress('Enviando contas...');
-  await fsBatchSet('accounts', accounts);
-  if(onProgress) onProgress('Enviando contas a pagar...');
-  await fsBatchSet('bills', bills);
-  if(onProgress) onProgress(`Enviando ${transactions.length} transações... isso pode levar alguns minutos.`);
-  await fsBatchSet('transactions', transactions);
-  fbSyncing = false;
-  if(onProgress) onProgress('Sincronização concluída!');
+  await requestWakeLockSafe();
+  try{
+    if(onProgress) onProgress('Enviando contas...');
+    const rAcc = await fsBatchSet('accounts', accounts);
+
+    if(onProgress) onProgress('Enviando contas a pagar...');
+    const rBills = await fsBatchSet('bills', bills);
+
+    if(onProgress) onProgress(`Enviando 0/${transactions.length} transações... mantenha o app aberto e a tela ligada.`);
+    const rTx = await fsBatchSet('transactions', transactions, (done, total) => {
+      if(onProgress) onProgress(`Enviando ${done}/${total} transações... mantenha o app aberto e a tela ligada.`);
+    });
+
+    if(onProgress) onProgress('Conferindo dados na nuvem...');
+    const cloudCount = await fsCollectionCount('transactions');
+
+    const totalFail = rAcc.fail + rBills.fail + rTx.fail;
+    if(totalFail > 0){
+      if(onProgress) onProgress(`⚠ Envio incompleto: ${totalFail} registro(s) falharam. Toque em "Enviar" novamente para tentar de novo.`);
+    } else if(cloudCount !== null && cloudCount < transactions.length){
+      if(onProgress) onProgress(`⚠ Só ${cloudCount} de ${transactions.length} transações confirmadas na nuvem. Toque em "Enviar" novamente.`);
+    } else {
+      if(onProgress) onProgress(`✓ Sincronização concluída: ${accounts.length} contas, ${transactions.length} transações, ${bills.length} contas a pagar.`);
+    }
+  } finally {
+    fbSyncing = false;
+    releaseWakeLockSafe();
+  }
   return true;
 }
 
@@ -825,7 +782,7 @@ function renderDashboard(){
     <section class="quick-actions">
       <button class="quick-btn" data-action="open-search">${ICONS.search}<span>Localizar</span></button>
       <button class="quick-btn" data-action="open-accounts-toggle">${ICONS.power}<span>Ativar/inativar conta</span></button>
-      <button class="quick-btn" data-action="save-cloud">${ICONS.cloud}<span>Backup (.json)</span></button>
+      <button class="quick-btn" data-action="save-cloud">${ICONS.cloud}<span>Salvar na nuvem</span></button>
     </section>
 
     <section class="cards">
@@ -1768,6 +1725,9 @@ async function openDataSheet(){
 
   const existingConfig = await loadFirebaseConfig();
   const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
+  const statusLabel = fbConnecting ? 'Conectando...' : fbReady ? (fbError ? 'Conectado, com erros recentes ⚠' : 'Conectado ☁') : fbError ? 'Erro de conexão ⚠' : 'Não conectado';
+  const statusColor = fbConnecting ? 'var(--gold)' : fbReady && !fbError ? 'var(--ledger)' : 'var(--brick)';
+  const localCounts = `${accounts.length} contas · ${transactions.length} transações · ${bills.length} contas a pagar (neste aparelho)`;
 
   openModal(`
     <p class="sheet-title">Dados do app</p>
@@ -1779,22 +1739,19 @@ async function openDataSheet(){
 
     <div class="sheet-divider"></div>
     <p class="sheet-title" style="font-size:15px;">Sincronização em nuvem (Firebase)</p>
-    <p class="muted small" style="margin:-6px 0 12px 0;">
-      Status: <strong style="color:${fbStatus==='synced'?'var(--ledger)':fbStatus==='error'?'var(--brick)':fbStatus==='connecting'?'var(--gold)':'var(--muted)'}">${
-        fbStatus==='synced' ? 'Conectado e sincronizado ☁' :
-        fbStatus==='connecting' ? 'Conectando / carregando dados…' :
-        fbStatus==='error' ? 'Erro ao conectar ou sincronizar ⚠' :
-        'Não conectado'
-      }</strong><br>
-      Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real. O botão "Backup (.json)" da Visão geral só salva um arquivo local — ele não envia nada para a nuvem.
+    <p class="muted small" style="margin:-6px 0 6px 0;">
+      Status: <strong style="color:${statusColor}">${statusLabel}</strong><br>
+      ${localCounts}<br>
+      Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real.
+      ${fbError ? '<br><strong style="color:var(--brick)">Se os dados não baterem entre aparelhos, toque em "Enviar dados" novamente sem sair do app até a confirmação aparecer.</strong>' : ''}
     </p>
     <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
       <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
     </div>
     <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e conectar</button>
     ${existingConfig ? `<button class="btn-ghost" id="removeFbConfigBtn" type="button" style="width:100%; margin-top:8px; text-align:center; color:var(--brick); border-color:var(--brick);">Desconectar</button>` : ''}
-    ${(fbReady || fbStatus==='synced') ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Enviar dados deste aparelho para a nuvem agora</button>` : ''}
-    <p class="muted small" id="fbStatusMsg" style="margin-top:10px;"></p>
+    ${fbReady ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Enviar dados deste aparelho para a nuvem agora</button>` : ''}
+    <p class="muted small" id="fbStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
     <p class="sheet-title" style="font-size:15px;">Sobre esta versão</p>
@@ -1804,7 +1761,7 @@ async function openDataSheet(){
 
   const saveBtn = document.getElementById('saveFbConfigBtn');
   if(saveBtn) saveBtn.addEventListener('click', async () => {
-    const status = document.getElementById('fbStatusMsg');
+    const status = document.getElementById('fbStatus');
     const raw = document.getElementById('fbConfigInput').value.trim();
     if(!raw){ if(status) status.textContent = 'Cole a configuração do Firebase primeiro.'; return; }
     let parsed;
@@ -1814,7 +1771,7 @@ async function openDataSheet(){
     if(status) status.textContent = 'Conectando...';
     await saveFirebaseConfig(parsed);
     await initFirebase();
-    if(status) status.textContent = fbStatus === 'error' ? 'Não foi possível conectar. Confira a configuração e as regras do Firestore.' : 'Conectado! Carregando os dados da nuvem…';
+    if(status) status.textContent = fbReady ? 'Conectado com sucesso!' : 'Não foi possível conectar. Confira a configuração e as regras do Firestore.';
     render();
   });
 
@@ -1824,15 +1781,15 @@ async function openDataSheet(){
     fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
     fbUnsubscribers = [];
     fbReady = false;
-    fbStatus = 'idle';
-    updateSyncBadge();
+    fbConnecting = false;
+    fbError = false;
     render();
     openDataSheet();
   });
 
   const syncBtn = document.getElementById('syncNowBtn');
   if(syncBtn) syncBtn.addEventListener('click', async () => {
-    const status = document.getElementById('fbStatusMsg');
+    const status = document.getElementById('fbStatus');
     syncBtn.disabled = true;
     await syncAllToFirebase((msg) => { if(status) status.textContent = msg; });
     syncBtn.disabled = false;
