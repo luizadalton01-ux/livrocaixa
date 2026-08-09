@@ -29,6 +29,9 @@
     'https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js'
   ]);
 </script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
 
@@ -51,6 +54,7 @@
   .version-badge{ font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; color:var(--ink);
     background:var(--gold); border-radius:10px; padding:2px 7px; letter-spacing:0.3px; }
   .brand-text p{ margin:0; font-size:11px; color:#AEB8C6; }
+  .sync-badge{ color:#8FD9B0; font-weight:600; }
   .install-btn{ margin-left:8px; background:var(--gold); color:var(--ink); border:none; border-radius:20px;
     padding:7px 13px; font-size:11.5px; font-weight:700; font-family:'Inter',sans-serif; flex-shrink:0; }
   .install-btn.hidden{ display:none; }
@@ -66,6 +70,10 @@
   .stack{ display:flex; flex-direction:column; gap:16px; }
 
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .quick-actions{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
+  .quick-btn{ flex:0 0 auto; display:flex; align-items:center; gap:6px; background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:20px; padding:9px 14px; font-size:12px; font-weight:600; color:var(--ink); white-space:nowrap; font-family:'Inter',sans-serif; }
+  .quick-btn svg{ flex-shrink:0; color:var(--ledger); }
   .summary-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:13px; }
   .summary-icon{ width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
   .tone-ink .summary-icon{ background:#16233A1A; color:var(--ink); }
@@ -102,21 +110,69 @@
     font-size:12px; color:var(--muted); }
   .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
 
-  .account-grid{ display:flex; flex-direction:column; gap:10px; }
-  .account-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:14px 16px; position:relative; }
-  .account-card h3{ font-family:'Fraunces',serif; font-size:15px; margin:2px 0 8px 0; }
-  .account-balance{ font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:600; margin:0; }
-  .icon-btn{ background:none; border:none; padding:5px; border-radius:6px; color:var(--muted); }
-  .icon-btn.danger{ position:absolute; top:8px; right:8px; }
+  .account-grid{ display:flex; flex-direction:column; gap:7px; }
+  .account-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:9px 40px 9px 12px; position:relative; cursor:pointer; }
+  .account-card.zebra-a{ background:var(--paper-raised); }
+  .account-card.zebra-b{ background:#FBF7EC; }
+  .account-card.inactive{ opacity:0.6; background:#F1EEE3; }
+  .inactive-tag{ color:var(--brick); font-weight:600; }
+  .account-card h3{ font-family:'Fraunces',serif; font-size:13.5px; margin:1px 0 4px 0; }
+  .account-balance{ font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:600; margin:0; }
+  .icon-btn{ background:none; border:none; padding:4px; border-radius:6px; color:var(--muted); }
+  .account-card .icon-btn.danger{ position:absolute; top:6px; right:6px; }
+  .account-card .icon-btn.edit-acct{ position:absolute; top:32px; right:6px; color:var(--muted); }
+  .account-card .icon-btn.edit-acct:hover{ color:var(--ink); }
+  .account-card .icon-btn.toggle-acct{ position:absolute; top:58px; right:6px; color:var(--muted); }
+  .account-card .icon-btn.toggle-acct:hover{ color:var(--ledger); }
 
   .ledger{ list-style:none; margin:0; padding:0; }
   .ledger-row{ display:flex; align-items:center; gap:9px; padding:11px 2px; border-bottom:1px solid var(--line); }
   .ledger-row:last-child{ border-bottom:none; }
+  .ledger-row.clickable{ cursor:pointer; }
+  .ledger-row.clickable:active{ background:#F1EEE3; }
   .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   .dot.entrada{ background:var(--ledger); }
   .dot.saida{ background:var(--brick); }
   .ledger-main{ flex:1; min-width:0; }
   .ledger-desc{ margin:0; font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .day-ledger{ display:flex; flex-direction:column; gap:14px; }
+  .day-block{ }
+  .day-label{ margin:0 0 2px 0; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:0.3px; text-transform:uppercase; }
+  .day-balance{ margin:6px 0 0 0; font-size:11.5px; color:var(--muted); text-align:right; padding-top:6px; border-top:1px dashed var(--line); }
+  .day-balance .amount{ font-size:12px; }
+
+  .tx-groups{ display:flex; flex-direction:column; gap:8px; }
+  .tx-group{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .tx-group-header{ width:100%; display:flex; align-items:center; gap:10px; background:none; border:none; padding:13px 14px; text-align:left; font-family:'Inter',sans-serif; }
+  .chevron{ flex-shrink:0; color:var(--muted); transition:transform 0.15s ease; }
+  .chevron.open{ transform:rotate(90deg); color:var(--ink); }
+  .tx-group-title{ flex:1; min-width:0; }
+  .tx-group-name{ margin:0; font-size:14px; font-weight:600; font-family:'Fraunces',serif; }
+  .tx-group-body{ border-top:1px solid var(--line); padding:12px 14px 10px 14px; }
+  .tx-group-body .ledger-row{ padding-left:2px; }
+
+  .tx-layout{ display:flex; gap:10px; align-items:flex-start; }
+  .tx-sidebar{ flex:0 0 148px; width:148px; display:flex; flex-direction:column; gap:4px;
+    max-height:min(560px, 70vh); overflow-y:auto; background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:12px; padding:8px; }
+  .acct-chip{ background:none; border:none; border-radius:8px; padding:9px 8px; font-size:12.5px; line-height:1.3;
+    font-family:'Inter',sans-serif; color:var(--ink); text-align:left; word-break:break-word; }
+  .acct-chip.active{ background:var(--ledger); color:#fff; font-weight:600; }
+  .acct-chip.inactive{ color:var(--muted); opacity:0.75; }
+  .acct-chip.inactive.active{ background:var(--muted); color:#fff; opacity:1; }
+  .acct-chip-all{ font-weight:700; font-family:'Fraunces',serif; font-size:13px; border-bottom:1px solid var(--line); border-radius:0; padding-bottom:9px; margin-bottom:4px; }
+  .acct-sidebar-divider{ border-top:1px dashed var(--line); margin:4px 0; padding-top:2px; }
+  .tx-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:12px; }
+
+  .period-row{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .period-row select{ font-family:'Inter',sans-serif; font-size:12px; padding:7px 8px; border:1px solid var(--line);
+    border-radius:8px; background:#FCFBF7; color:var(--ink); }
+
+  .transfer-info{ display:flex; align-items:center; gap:12px; background:#FCFBF7; border:1px solid var(--line);
+    border-radius:10px; padding:12px 14px; }
+  .transfer-info p{ margin:0; font-size:12.5px; flex:1; }
+  .transfer-info svg{ color:var(--gold); flex-shrink:0; }
 
   .empty{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:5px; padding:30px 10px; color:var(--muted); }
   .empty-title{ margin:4px 0 0 0; font-weight:600; color:var(--ink); font-size:13.5px; }
@@ -143,6 +199,7 @@
   .modal-sheet{ background:var(--paper); width:100%; max-height:88vh; overflow-y:auto; border-radius:18px 18px 0 0;
     padding:8px 18px calc(env(safe-area-inset-bottom,0px) + 22px) 18px; transform:translateY(100%); transition:transform 0.25s ease; }
   .modal-overlay.open .modal-sheet{ transform:translateY(0); }
+  .modal-sheet.sheet-compact{ max-height:min(78vh, 560px); }
   .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:4px; margin:8px auto 14px auto; }
   .sheet-title{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; margin:0 0 14px 0; display:flex; align-items:center; justify-content:space-between; }
 
@@ -151,6 +208,21 @@
     border-radius:9px; background:#FCFBF7; color:var(--ink); width:100%; }
   .field input:focus, .field select:focus{ outline:2px solid var(--gold); outline-offset:1px; }
   .checkbox-row{ display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:14px; }
+
+  .compact-form .field{ margin-bottom:9px; }
+  .compact-form .field input, .compact-form .field select{ padding:9px 10px; font-size:14px; }
+  .compact-form .checkbox-row{ margin-bottom:10px; }
+  .compact-form .segmented{ margin-bottom:9px; }
+  .field-row{ display:flex; gap:8px; }
+  .field-row .field{ flex:1; min-width:0; }
+  .field-row > button{ flex:1; text-align:center; }
+
+  .stmt-filters{ display:flex; gap:8px; margin-bottom:16px; }
+  .stmt-filters select{ flex:1; font-family:'Inter',sans-serif; font-size:14px; padding:10px 11px; border:1px solid var(--line);
+    border-radius:9px; background:#FCFBF7; color:var(--ink); }
+  .stmt-summary{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+  .stmt-summary > div{ background:#FCFBF7; border:1px solid var(--line); border-radius:9px; padding:9px 8px; text-align:center; }
+  .stmt-summary .amount{ font-size:12.5px; display:block; margin-top:2px; }
 
   .sheet-divider{ border-top:1px solid var(--line); margin:20px 0 16px 0; }
   .changelog-list{ display:flex; flex-direction:column; gap:14px; max-height:260px; overflow-y:auto; }
@@ -162,6 +234,12 @@
   .segmented{ display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:12px; }
   .segmented button{ flex:1; padding:11px 0; background:#FCFBF7; border:none; font-size:14px; font-family:'Inter',sans-serif; }
   .segmented button.active{ background:var(--ledger); color:#fff; font-weight:600; }
+  .segmented-3 button{ font-size:12.5px; padding:11px 2px; }
+  .hidden-field{ display:none; }
+
+  .consolidado-toggle{ width:18px; height:18px; border-radius:50%; border:1.5px solid var(--line); background:none;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; color:#fff; }
+  .consolidado-toggle.on{ background:var(--ledger); border-color:var(--ledger); }
 
   .btn-primary{ background:var(--ledger); color:#fff; border:none; border-radius:9px; padding:13px 18px; font-size:14.5px;
     font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:4px; }
@@ -171,6 +249,11 @@
   @media (min-width:680px){
     .cards{ grid-template-columns:repeat(4,1fr); }
     #content{ max-width:900px; }
+    .tx-sidebar{ flex-basis:180px; width:180px; }
+  }
+  @media (max-width:360px){
+    .tx-sidebar{ flex-basis:120px; width:120px; }
+    .acct-chip{ font-size:11px; padding:8px 6px; }
   }
 </style>
 </head>
@@ -181,7 +264,7 @@
       <div class="brand-mark">LC</div>
       <div class="brand-text">
         <h1>Livro-Caixa <span id="versionBadge" class="version-badge"></span></h1>
-        <p>entradas, saídas e contas</p>
+        <p>entradas, saídas e contas <span id="syncBadge" class="sync-badge"></span></p>
       </div>
       <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -224,8 +307,71 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.17.0';
 const CHANGELOG = [
+  { v: '1.17.0', data: '2026-08-08', mudancas: [
+    'Sincronização em nuvem com Firebase: várias pessoas usando o app conseguem salvar e excluir contas, transações e contas a pagar com os dados sincronizados em tempo real',
+    'Novo painel "Sincronização em nuvem" no menu Dados do app, para conectar, desconectar e enviar os dados locais para a nuvem',
+    'Indicador "☁ Sincronizado" no topo do app quando a conexão está ativa',
+  ]},
+  { v: '1.16.0', data: '2026-08-08', mudancas: [
+    'Aba Contas: ícone de ativar/inativar conta, empilhado abaixo do lápis no cartão',
+    'Cartões de conta mais compactos (menor espaçamento e fontes reduzidas)',
+    'Corrigido: botão de excluir conta a pagar não ficava mais posicionado incorretamente',
+  ]},
+  { v: '1.15.0', data: '2026-08-08', mudancas: [
+    'Aba Contas: ícone de lápis em cada cartão (abaixo da lixeira) para editar nome, banco, tipo e saldo inicial da conta',
+  ]},
+  { v: '1.14.0', data: '2026-08-08', mudancas: [
+    'Aba Contas a pagar: nova seção com as transações lançadas que ainda não foram consolidadas, separadas em Passadas e Futuras',
+  ]},
+  { v: '1.13.0', data: '2026-08-08', mudancas: [
+    'Aba Contas: contas inativas agora aparecem sempre abaixo das ativas',
+    'Campos de valor (transações, contas a pagar, saldo inicial) formatados em R$ enquanto você digita',
+  ]},
+  { v: '1.12.0', data: '2026-08-08', mudancas: [
+    'Excluir uma conta agora também pede confirmação, informando que as transações dela serão apagadas junto',
+    'Contas em ordem alfabética na aba Contas, com alternância de cores entre os cartões',
+    'Tela de edição de transação em modo reduzido, ocupando menos espaço na tela',
+  ]},
+  { v: '1.11.0', data: '2026-08-08', mudancas: [
+    'Excluir uma transação de transferência agora remove as duas pontas (nas duas contas envolvidas)',
+    'Edição de transação com as três opções (Entrada, Saída, Transferência) e botão "Sair (sem salvar)"',
+    'Lançamentos recorrentes: repita uma transação semanal, mensal, trimestral, quadrimestral, semestral ou anualmente, gerando automaticamente as datas futuras',
+  ]},
+  { v: '1.10.1', data: '2026-08-08', mudancas: [
+    'Coluna de contas na aba Transações mais larga, para os nomes ficarem mais legíveis',
+  ]},
+  { v: '1.10.0', data: '2026-08-08', mudancas: [
+    'Aba Transações reformulada: barra lateral com as contas ativas e, abaixo, as inativas (sombreadas) — toque numa conta para filtrar só as transações dela',
+    'Filtro de período no topo: "Últimos 7 dias" (padrão) ou um mês/ano específico',
+    'Ao abrir uma transação de transferência, mostra qual conta enviou e qual recebeu',
+  ]},
+  { v: '1.9.0', data: '2026-08-08', mudancas: [
+    'Extrato da conta (aba Contas) ganhou o botão "+ Nova transação nesta conta"',
+    'Novo tipo "Transferência" no lançamento de transações, para mover dinheiro entre duas contas de uma vez',
+    'Ticket "Consolidado" em cada transação, para marcar se ela já foi efetivada no banco (toque para alternar direto na lista)',
+  ]},
+  { v: '1.8.0', data: '2026-08-08', mudancas: [
+    'Transações dentro de cada conta agora aparecem em ordem crescente (mais antigas no topo, mais recentes embaixo)',
+    'Saldo do dia exibido ao final de cada dia, dentro da conta e no extrato',
+    'Tocar em uma transação agora abre a edição completa dela',
+    'Botão de remover movido para dentro da edição da transação, com mensagem de confirmação antes de excluir',
+  ]},
+  { v: '1.7.0', data: '2026-08-08', mudancas: [
+    'Aba Contas: tocar em uma conta agora abre o extrato de transações daquela conta',
+    'Extrato com filtro de mês e ano, já aberto no mês/ano atual por padrão',
+    'Resumo de entradas, saídas e saldo do mês dentro do extrato',
+  ]},
+  { v: '1.6.0', data: '2026-08-08', mudancas: [
+    'Aba Transações reorganizada: cada transação agora aparece agrupada dentro da sua respectiva conta, com o total de cada conta e opção de expandir/recolher',
+    'Carregamento incremental por conta (evita travar o app com contas com milhares de transações)',
+  ]},
+  { v: '1.5.0', data: '2026-08-06', mudancas: [
+    'Botão "Localizar" na Visão geral para buscar transações por descrição, categoria ou conta',
+    'Botão para ativar/inativar contas (contas inativas saem das opções de nova transação e do saldo total, mas mantêm o histórico)',
+    'Botão "Salvar na nuvem" na Visão geral, com backup em .json (usa o menu de compartilhar do celular quando disponível)',
+  ]},
   { v: '1.4.0', data: '2026-08-06', mudancas: [
     'Controle de versão do app (versão visível + histórico de mudanças)',
     'Cache do service worker agora é renovado automaticamente a cada nova versão',
@@ -254,6 +400,13 @@ let accounts = [], transactions = [], bills = [];
 let activeTab = 'dashboard';
 let filterTipo = 'todos';
 let filterBills = 'pendentes';
+let expandedGroups = new Set();
+let groupVisible = {};
+let txFilterAccountId = null;
+let txPeriod = { mode: 'recent' };
+let stmtAccountId = null;
+let stmtMonth = null;
+let stmtYear = null;
 let barChart = null, pieChart = null;
 let dbPromise = null;
 
@@ -295,6 +448,12 @@ function persist(){
   idbSet('bills', bills).catch(() => {});
 }
 
+function migrateData(){
+  const today = todayStr();
+  accounts.forEach(a => { if (a.ativo === undefined) a.ativo = true; });
+  transactions.forEach(t => { if (t.consolidado === undefined) t.consolidado = t.data <= today; });
+}
+
 async function loadInitialState(){
   try{
     const stored = await idbGetAll();
@@ -302,6 +461,7 @@ async function loadInitialState(){
       accounts = stored.accounts || [];
       transactions = stored.transactions || [];
       bills = stored.bills || [];
+      migrateData();
       return;
     }
     // migração única: se havia dados salvos na versão anterior (localStorage), traz para o IndexedDB
@@ -312,11 +472,123 @@ async function loadInitialState(){
       accounts = oldA ? JSON.parse(oldA) : [];
       transactions = oldT ? JSON.parse(oldT) : [];
       bills = oldB ? JSON.parse(oldB) : [];
+      migrateData();
       persist();
     }
   } catch(err){
     console.error('Erro ao carregar dados salvos:', err);
   }
+}
+
+/* =========================== Firebase: sincronização multiusuário =========================== */
+// Cada dispositivo guarda sua própria cópia local (IndexedDB) para funcionar offline.
+// Quando configurado, o Firebase Firestore sincroniza contas, transações e contas a pagar
+// em tempo real entre todos os aparelhos conectados ao mesmo projeto.
+let fbApp = null, fbDb = null, fbReady = false, fbSyncing = false;
+let fbUnsubscribers = [];
+
+async function loadFirebaseConfig(){
+  try { const stored = await idbGetAll(); return stored.firebaseConfig || null; }
+  catch(e){ return null; }
+}
+async function saveFirebaseConfig(configObj){ await idbSet('firebaseConfig', configObj); }
+async function clearFirebaseConfig(){ await idbSet('firebaseConfig', null); }
+
+function updateSyncBadge(){
+  const el = document.getElementById('syncBadge');
+  if(el) el.textContent = fbReady ? '☁ Sincronizado' : '';
+}
+
+async function initFirebase(){
+  fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
+  fbUnsubscribers = [];
+  fbReady = false;
+  const config = await loadFirebaseConfig();
+  if(!config || !config.apiKey || typeof firebase === 'undefined'){ updateSyncBadge(); return; }
+  try{
+    fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
+    fbDb = firebase.firestore();
+    await firebase.auth().signInAnonymously();
+    fbReady = true;
+    attachFirestoreListeners();
+    updateSyncBadge();
+  } catch(e){
+    console.warn('Falha ao iniciar Firebase:', e);
+    fbReady = false;
+    updateSyncBadge();
+  }
+}
+
+function applyDocChanges(collectionKey, arrRef, changes){
+  let changed = false;
+  changes.forEach(change => {
+    const data = change.doc.data();
+    const idx = arrRef.findIndex(x => x.id === data.id);
+    if(change.type === 'removed'){
+      if(idx > -1){ arrRef.splice(idx, 1); changed = true; }
+    } else {
+      if(idx > -1) arrRef[idx] = data; else arrRef.push(data);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function attachFirestoreListeners(){
+  if(!fbReady) return;
+  fbUnsubscribers.push(fbDb.collection('accounts').onSnapshot((snap) => {
+    if(applyDocChanges('accounts', accounts, snap.docChanges())){ migrateData(); persist(); render(); }
+  }, (err) => console.warn('accounts listener error', err)));
+
+  fbUnsubscribers.push(fbDb.collection('bills').onSnapshot((snap) => {
+    if(applyDocChanges('bills', bills, snap.docChanges())){ persist(); render(); }
+  }, (err) => console.warn('bills listener error', err)));
+
+  fbUnsubscribers.push(fbDb.collection('transactions').onSnapshot((snap) => {
+    if(applyDocChanges('transactions', transactions, snap.docChanges())){ migrateData(); persist(); render(); }
+  }, (err) => console.warn('transactions listener error', err)));
+}
+
+async function fsSetDoc(collectionName, doc){
+  if(!fbReady) return;
+  try { await fbDb.collection(collectionName).doc(doc.id).set(doc); }
+  catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); }
+}
+async function fsDeleteDoc(collectionName, id){
+  if(!fbReady) return;
+  try { await fbDb.collection(collectionName).doc(id).delete(); }
+  catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); }
+}
+async function fsBatchSet(collectionName, docs){
+  if(!fbReady || !docs.length) return;
+  const CHUNK = 400;
+  for(let i = 0; i < docs.length; i += CHUNK){
+    const batch = fbDb.batch();
+    docs.slice(i, i + CHUNK).forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
+    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha no envio em lote', e); }
+  }
+}
+async function fsBatchDelete(collectionName, ids){
+  if(!fbReady || !ids.length) return;
+  const CHUNK = 400;
+  for(let i = 0; i < ids.length; i += CHUNK){
+    const batch = fbDb.batch();
+    ids.slice(i, i + CHUNK).forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
+    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha na exclusão em lote', e); }
+  }
+}
+async function syncAllToFirebase(onProgress){
+  if(!fbReady) return false;
+  fbSyncing = true;
+  if(onProgress) onProgress('Enviando contas...');
+  await fsBatchSet('accounts', accounts);
+  if(onProgress) onProgress('Enviando contas a pagar...');
+  await fsBatchSet('bills', bills);
+  if(onProgress) onProgress(`Enviando ${transactions.length} transações... isso pode levar alguns minutos.`);
+  await fsBatchSet('transactions', transactions);
+  fbSyncing = false;
+  if(onProgress) onProgress('Sincronização concluída!');
+  return true;
 }
 
 /* =========================== helpers =========================== */
@@ -327,6 +599,41 @@ const fmtDate = (d) => { if(!d) return ''; const [y,m,day] = d.split('-'); retur
 const monthLabel = (key) => { const [y,m] = key.split('-'); const n=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return `${n[parseInt(m,10)-1]}/${y.slice(2)}`; };
 const daysUntil = (dateStr) => { const t=new Date(todayStr()+'T00:00:00'); const d=new Date(dateStr+'T00:00:00'); return Math.round((d-t)/86400000); };
 const esc = (s) => (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// máscara de moeda (R$) para campos de valor: formata enquanto o usuário digita
+function maskCurrencyInput(e){
+  const el = e.target;
+  let digits = el.value.replace(/\D/g, '');
+  if(!digits){ el.value = ''; return; }
+  digits = digits.replace(/^0+(?=\d)/, '');
+  while(digits.length < 3) digits = '0' + digits;
+  const cents = digits.slice(-2);
+  let intPart = digits.slice(0, -2).replace(/^0+(?=\d)/, '') || '0';
+  intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  el.value = `R$ ${intPart},${cents}`;
+}
+function parseCurrencyBRL(str){
+  if(!str) return 0;
+  const cleaned = String(str).replace(/[^\d,]/g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
+}
+document.body.addEventListener('input', (e) => {
+  if(e.target.classList && e.target.classList.contains('currency-input')) maskCurrencyInput(e);
+});
+
+const RECURRENCE_MONTHS = { mes:1, trimestre:3, quadrimestre:4, semestre:6, ano:12 };
+function addDays(dateStr, n){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+function addRecurrence(dateStr, freq, times){
+  if(freq === 'semana') return addDays(dateStr, times * 7);
+  const months = RECURRENCE_MONTHS[freq] || 1;
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + months * times);
+  return d.toISOString().slice(0,10);
+}
 
 const CAT_ENTRADA = ['Salário','Freelance','Investimentos','Reembolso','Outros'];
 const CAT_SAIDA = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Outros'];
@@ -339,7 +646,7 @@ function balanceOf(accId){
     .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
   return (acc.saldoInicial || 0) + delta;
 }
-function totalBalance(){ return accounts.reduce((s,a) => s + balanceOf(a.id), 0); }
+function totalBalance(){ return accounts.filter(a => a.ativo !== false).reduce((s,a) => s + balanceOf(a.id), 0); }
 function billStatus(b){
   if(b.pago) return 'pago';
   const d = daysUntil(b.vencimento);
@@ -363,6 +670,11 @@ const ICONS = {
   bank:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>',
   trash:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>',
   warn:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B3432B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18.3-8.6-14.9a1.2 1.2 0 0 0-2.2 0L2.3 18.3a1.2 1.2 0 0 0 1.1 1.7h17.2a1.2 1.2 0 0 0 1.1-1.7Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  search:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+  power:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',
+  cloud:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A5 5 0 0 0 6.5 19h11Z"/><path d="M12 12v7m0-7-2.5 2.5M12 12l2.5 2.5"/></svg>',
+  check2:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  pencil:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
 };
 
 /* =========================== render root =========================== */
@@ -370,6 +682,7 @@ function render(){
   document.getElementById('topBalance').textContent = fmtBRL(totalBalance());
   const vb = document.getElementById('versionBadge');
   if (vb) vb.textContent = 'v' + APP_VERSION;
+  updateSyncBadge();
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
   const fab = document.getElementById('fab');
   fab.classList.toggle('hidden', activeTab === 'dashboard');
@@ -403,6 +716,12 @@ function renderDashboard(){
   }).join('')}</ul>` : emptyState(ICONS.check,'Nada pendente','Suas contas a pagar aparecerão aqui.');
 
   return `<div class="stack">
+    <section class="quick-actions">
+      <button class="quick-btn" data-action="open-search">${ICONS.search}<span>Localizar</span></button>
+      <button class="quick-btn" data-action="open-accounts-toggle">${ICONS.power}<span>Ativar/inativar conta</span></button>
+      <button class="quick-btn" data-action="save-cloud">${ICONS.cloud}<span>Salvar na nuvem</span></button>
+    </section>
+
     <section class="cards">
       <div class="summary-card tone-ink"><div class="summary-icon">${ICONS.wallet}</div><p class="summary-label">Saldo total</p><p class="summary-value">${fmtBRL(totalBalance())}</p></div>
       <div class="summary-card tone-green"><div class="summary-icon">${ICONS.up}</div><p class="summary-label">Entradas do mês</p><p class="summary-value">${fmtBRL(monthEntradas)}</p></div>
@@ -483,48 +802,236 @@ function renderChartsFallback(){
 
 /* =========================== accounts =========================== */
 function renderAccounts(){
-  const body = accounts.length ? `<div class="account-grid">${accounts.map(a => `
-    <div class="account-card">
+  const ativas = accounts.filter(a => a.ativo !== false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const inativas = accounts.filter(a => a.ativo === false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const sorted = [...ativas, ...inativas];
+  const body = sorted.length ? `<div class="account-grid">${sorted.map((a, i) => {
+    const ativa = a.ativo !== false;
+    return `
+    <div class="account-card ${ativa ? (i % 2 === 0 ? 'zebra-a' : 'zebra-b') : 'inactive'}" data-action="open-account-statement" data-id="${a.id}">
       <button class="icon-btn danger" data-action="delete-account" data-id="${a.id}">${ICONS.trash}</button>
-      <p class="muted small">${esc(a.banco)||'—'} · ${esc(a.tipo)}</p>
+      <button class="icon-btn edit-acct" data-action="edit-account" data-id="${a.id}" title="Editar conta">${ICONS.pencil}</button>
+      <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>
+      <p class="muted small">${esc(a.banco)||'—'} · ${esc(a.tipo)} ${ativa ? '' : '· <span class="inactive-tag">Inativa</span>'}</p>
       <h3>${esc(a.nome)}</h3>
       <p class="account-balance" style="color:${balanceOf(a.id)<0?'#B3432B':'#1B4332'}">${fmtBRL(balanceOf(a.id))}</p>
-    </div>`).join('')}</div>` : emptyState(ICONS.bank,'Nenhuma conta cadastrada','Cadastre suas contas bancárias para organizar seu dinheiro.');
+    </div>`;
+  }).join('')}</div>` : emptyState(ICONS.bank,'Nenhuma conta cadastrada','Cadastre suas contas bancárias para organizar seu dinheiro.');
 
   return `<div class="stack">
     <div class="section-head"><h2>Contas bancárias</h2></div>
+    <p class="muted small" style="margin-top:-8px;">Toque em uma conta para ver o extrato de transações.</p>
     ${body}
   </div>`;
 }
 
-/* =========================== transactions =========================== */
-function renderTransactions(){
-  const accountName = (id) => { const a = accounts.find(x=>x.id===id); return a ? esc(a.nome) : '—'; };
-  const list = [...transactions].filter(t => filterTipo==='todos' || t.tipo===filterTipo).sort((a,b)=>b.data.localeCompare(a.data));
+/* =========================== agrupamento por dia com saldo do dia =========================== */
+function buildDailyBalanceMap(accountId){
+  const acc = accounts.find(a => a.id === accountId);
+  const all = transactions.filter(t => t.contaId === accountId).sort((a,b) => a.data.localeCompare(b.data));
+  let running = acc ? (acc.saldoInicial || 0) : 0;
+  const map = {};
+  all.forEach(t => { running += (t.tipo === 'entrada' ? t.valor : -t.valor); map[t.data] = running; });
+  return map;
+}
 
-  const filters = `<div class="filter-row">${['todos','entrada','saida'].map(f => `
+function renderDayGroupedLedger(accountId, items){
+  if(!items.length) return emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
+  const sorted = [...items].sort((a,b) => a.data.localeCompare(b.data));
+  const balMap = buildDailyBalanceMap(accountId);
+
+  const days = [];
+  sorted.forEach(t => {
+    let day = days[days.length - 1];
+    if(!day || day.date !== t.data){ day = { date: t.data, items: [] }; days.push(day); }
+    day.items.push(t);
+  });
+
+  return `<div class="day-ledger">${days.map(d => `
+    <div class="day-block">
+      <p class="day-label">${fmtDate(d.date)}</p>
+      <ul class="ledger">${d.items.map(t => `
+        <li class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
+          <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+          <span class="dot ${t.tipo}"></span>
+          <div class="ledger-main">
+            <p class="ledger-desc">${esc(t.descricao)}</p>
+            <p class="muted small">${esc(t.categoria)}</p>
+          </div>
+          <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
+        </li>`).join('')}
+      </ul>
+      <p class="day-balance">Saldo do dia <span class="${(balMap[d.date]||0) < 0 ? 'amount saida' : 'amount entrada'}">${fmtBRL(balMap[d.date]||0)}</span></p>
+    </div>`).join('')}</div>`;
+}
+
+/* =========================== extrato da conta (aba Contas) =========================== */
+const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function statementYears(accountId){
+  const years = new Set(transactions.filter(t => t.contaId === accountId).map(t => parseInt(t.data.slice(0,4), 10)));
+  years.add(new Date().getFullYear());
+  return [...years].sort((a,b) => b - a);
+}
+
+function openAccountStatement(accountId, presetMonth, presetYear){
+  const acc = accounts.find(a => a.id === accountId);
+  if(!acc) return;
+  const now = new Date();
+  stmtAccountId = accountId;
+  stmtMonth = presetMonth || now.getMonth() + 1;
+  stmtYear = presetYear || now.getFullYear();
+
+  const years = statementYears(accountId);
+  if(presetYear && !years.includes(presetYear)){ years.push(presetYear); years.sort((a,b) => b-a); }
+  openModal(`
+    <p class="sheet-title">Extrato · ${esc(acc.nome)}</p>
+    <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="margin-bottom:14px;">+ Nova transação nesta conta</button>
+    <div class="stmt-filters">
+      <select id="stmtMonth">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
+      <select id="stmtYear">${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
+    </div>
+    <div id="stmtResults">${renderStatementBody()}</div>
+  `);
+}
+
+function renderStatementBody(){
+  const acc = accounts.find(a => a.id === stmtAccountId);
+  if(!acc) return '';
+  const monthKey = `${stmtYear}-${String(stmtMonth).padStart(2,'0')}`;
+  const items = transactions.filter(t => t.contaId === stmtAccountId && t.data.slice(0,7) === monthKey);
+
+  const entradas = items.filter(t => t.tipo==='entrada').reduce((s,t) => s+t.valor, 0);
+  const saidas = items.filter(t => t.tipo==='saida').reduce((s,t) => s+t.valor, 0);
+
+  const summary = `
+    <div class="stmt-summary">
+      <div><p class="muted small">Entradas</p><p class="amount entrada">${fmtBRL(entradas)}</p></div>
+      <div><p class="muted small">Saídas</p><p class="amount saida">${fmtBRL(saidas)}</p></div>
+      <div><p class="muted small">Saldo do mês</p><p class="amount ${entradas-saidas>=0?'entrada':'saida'}">${fmtBRL(entradas-saidas)}</p></div>
+    </div>`;
+
+  return summary + renderDayGroupedLedger(stmtAccountId, items);
+}
+
+function refreshStatementBody(){
+  const box = document.getElementById('stmtResults');
+  if(box) box.innerHTML = renderStatementBody();
+}
+
+document.body.addEventListener('change', (e) => {
+  if(e.target.id === 'stmtMonth'){ stmtMonth = parseInt(e.target.value, 10); refreshStatementBody(); }
+  if(e.target.id === 'stmtYear'){ stmtYear = parseInt(e.target.value, 10); refreshStatementBody(); }
+  if(e.target.id === 'txMonthSelect' || e.target.id === 'txYearSelect'){
+    const m = document.getElementById('txMonthSelect');
+    const y = document.getElementById('txYearSelect');
+    txPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
+    render();
+  }
+});
+
+/* =========================== transactions =========================== */
+function last7DaysStart(){
+  const d = new Date();
+  d.setDate(d.getDate() - 6);
+  return d.toISOString().slice(0,10);
+}
+
+function renderDayGroupedLedgerMulti(items){
+  if(!items.length) return emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
+  const sorted = [...items].sort((a,b) => a.data.localeCompare(b.data));
+  const days = [];
+  sorted.forEach(t => {
+    let day = days[days.length - 1];
+    if(!day || day.date !== t.data){ day = { date: t.data, items: [] }; days.push(day); }
+    day.items.push(t);
+  });
+  return `<div class="day-ledger">${days.map(d => `
+    <div class="day-block">
+      <p class="day-label">${fmtDate(d.date)}</p>
+      <ul class="ledger">${d.items.map(t => {
+        const accName = (accounts.find(a => a.id === t.contaId) || {}).nome || 'Sem conta';
+        return `<li class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
+          <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+          <span class="dot ${t.tipo}"></span>
+          <div class="ledger-main">
+            <p class="ledger-desc">${esc(t.descricao)}</p>
+            <p class="muted small">${esc(t.categoria)} · ${esc(accName)}</p>
+          </div>
+          <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
+        </li>`;
+      }).join('')}</ul>
+    </div>`).join('')}</div>`;
+}
+
+function txAvailableYears(){
+  const pool = txFilterAccountId ? transactions.filter(t => t.contaId === txFilterAccountId) : transactions;
+  const years = new Set(pool.map(t => parseInt(t.data.slice(0,4), 10)));
+  years.add(new Date().getFullYear());
+  return [...years].sort((a,b) => b-a);
+}
+
+function renderTransactions(){
+  const warn = !accounts.length ? `<p class="muted small">Cadastre uma conta bancária antes de lançar transações.</p>` : '';
+
+  // barra lateral: contas ativas primeiro, depois inativas (sombreadas)
+  const ativos = accounts.filter(a => a.ativo !== false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const inativos = accounts.filter(a => a.ativo === false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const sidebarItem = (a) => `
+    <button class="acct-chip ${a.ativo===false?'inactive':''} ${txFilterAccountId===a.id?'active':''}" data-action="filter-account" data-id="${a.id}">
+      ${esc(a.nome)}
+    </button>`;
+
+  const sidebar = accounts.length ? `<aside class="tx-sidebar">
+    <button class="acct-chip acct-chip-all ${txFilterAccountId===null?'active':''}" data-action="filter-account" data-id="">Todas as contas</button>
+    ${ativos.map(sidebarItem).join('')}
+    ${inativos.length ? `<div class="acct-sidebar-divider"></div>${inativos.map(sidebarItem).join('')}` : ''}
+  </aside>` : '';
+
+  // filtro de período: últimos 7 dias (padrão) ou mês/ano selecionado
+  const years = txAvailableYears();
+  const now = new Date();
+  const selMonth = txPeriod.mode === 'month' ? txPeriod.month : now.getMonth()+1;
+  const selYear = txPeriod.mode === 'month' ? txPeriod.year : now.getFullYear();
+
+  const periodControls = `
+    <div class="period-row">
+      <button class="chip ${txPeriod.mode==='recent'?'active':''}" data-action="set-period-recent">Últimos 7 dias</button>
+      <select id="txMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
+      <select id="txYearSelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
+    </div>`;
+
+  const tipoFilters = `<div class="filter-row">${['todos','entrada','saida'].map(f => `
     <button class="chip ${filterTipo===f?'active':''}" data-action="filter-transactions" data-value="${f}">
       ${f==='todos'?'Todas':f==='entrada'?'Entradas':'Saídas'}
     </button>`).join('')}</div>`;
 
-  const body = list.length ? `<ul class="ledger">${list.map(t => `
-    <li class="ledger-row">
-      <span class="dot ${t.tipo}"></span>
-      <div class="ledger-main">
-        <p class="ledger-desc">${esc(t.descricao)}</p>
-        <p class="muted small">${fmtDate(t.data)} · ${esc(t.categoria)} · ${accountName(t.contaId)}</p>
-      </div>
-      <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
-      <button class="icon-btn danger" data-action="delete-transaction" data-id="${t.id}">${ICONS.trash}</button>
-    </li>`).join('')}</ul>` : emptyState(ICONS.empty1,'Nenhuma transação','Lance sua primeira entrada ou saída.');
+  // aplica filtros: conta > tipo > período
+  let filtered = transactions.filter(t => filterTipo==='todos' || t.tipo===filterTipo);
+  if(txFilterAccountId) filtered = filtered.filter(t => t.contaId === txFilterAccountId);
+  if(txPeriod.mode === 'recent'){
+    const start = last7DaysStart();
+    filtered = filtered.filter(t => t.data >= start && t.data <= todayStr());
+  } else {
+    const key = `${txPeriod.year}-${String(txPeriod.month).padStart(2,'0')}`;
+    filtered = filtered.filter(t => t.data.slice(0,7) === key);
+  }
 
-  const warn = !accounts.length ? `<p class="muted small">Cadastre uma conta bancária antes de lançar transações.</p>` : '';
+  const periodLabel = txPeriod.mode === 'recent' ? 'nos últimos 7 dias' : `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
+  const ledgerHtml = filtered.length
+    ? (txFilterAccountId ? renderDayGroupedLedger(txFilterAccountId, filtered) : renderDayGroupedLedgerMulti(filtered))
+    : emptyState(ICONS.empty1, 'Nenhuma transação', `Sem lançamentos ${periodLabel}${txFilterAccountId ? ' nesta conta' : ''}.`);
 
-  return `<div class="stack">
-    <div class="section-head"><h2>Transações</h2></div>
-    ${warn}
-    ${filters}
-    ${body}
+  return `<div class="tx-layout">
+    ${sidebar}
+    <div class="tx-main">
+      <div class="section-head"><h2>Transações</h2></div>
+      ${warn}
+      ${periodControls}
+      ${tipoFilters}
+      ${ledgerHtml}
+    </div>
   </div>`;
 }
 
@@ -557,10 +1064,27 @@ function renderBills(){
     </li>`;
   }).join('')}</ul>` : emptyState(ICONS.receipt,'Nada por aqui','Cadastre contas a pagar para acompanhar vencimentos.');
 
+  // transações lançadas que ainda não foram consolidadas (passadas e futuras)
+  const hoje = todayStr();
+  const naoConsolidadas = transactions.filter(t => !t.consolidado);
+  const passadas = naoConsolidadas.filter(t => t.data < hoje).sort((a,b) => a.data.localeCompare(b.data));
+  const futuras = naoConsolidadas.filter(t => t.data >= hoje).sort((a,b) => a.data.localeCompare(b.data));
+
+  const naoConsolidadasPanel = `
+    <div class="panel">
+      <h2>Transações não consolidadas</h2>
+      <p class="muted small" style="margin:-6px 0 14px 0;">Lançamentos ainda não confirmados como efetivados no banco — passados e futuros. Toque na bolinha para marcar como consolidada.</p>
+      <p class="muted small" style="font-weight:600; margin-bottom:4px;">Passadas (${passadas.length})</p>
+      ${renderDayGroupedLedgerMulti(passadas)}
+      <p class="muted small" style="font-weight:600; margin:18px 0 4px 0;">Futuras (${futuras.length})</p>
+      ${renderDayGroupedLedgerMulti(futuras)}
+    </div>`;
+
   return `<div class="stack">
     <div class="section-head"><h2>Contas a pagar</h2></div>
     ${filters}
     ${body}
+    ${naoConsolidadasPanel}
   </div>`;
 }
 
@@ -569,61 +1093,265 @@ const overlay = document.getElementById('modalOverlay');
 const sheet = document.getElementById('modalSheet');
 function openModal(html){
   sheet.innerHTML = `<div class="sheet-handle"></div>${html}`;
+  sheet.classList.remove('sheet-compact');
   overlay.classList.add('open');
 }
 function closeModal(){ overlay.classList.remove('open'); }
 overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); });
 
-function openAccountForm(){
+function openAccountForm(accountId){
+  const editing = !!accountId;
+  const acc = editing ? accounts.find(a => a.id === accountId) : null;
+  if(editing && !acc) return;
   openModal(`
-    <p class="sheet-title">Nova conta bancária</p>
-    <form id="accountForm">
-      <div class="field"><span>Nome da conta</span><input name="nome" placeholder="Ex: Conta principal" required></div>
-      <div class="field"><span>Banco</span><input name="banco" placeholder="Ex: Nubank"></div>
+    <p class="sheet-title">${editing ? 'Editar conta' : 'Nova conta bancária'}</p>
+    <form id="accountForm" data-id="${editing ? acc.id : ''}">
+      <div class="field"><span>Nome da conta</span><input name="nome" placeholder="Ex: Conta principal" value="${editing ? esc(acc.nome) : ''}" required></div>
+      <div class="field"><span>Banco</span><input name="banco" placeholder="Ex: Nubank" value="${editing ? esc(acc.banco||'') : ''}"></div>
       <div class="field"><span>Tipo</span>
-        <select name="tipo"><option>Corrente</option><option>Poupança</option><option>Carteira</option><option>Investimento</option></select>
+        <select name="tipo">${['Corrente','Poupança','Carteira','Investimento'].map(t => `<option ${editing && acc.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
       </div>
-      <div class="field"><span>Saldo inicial (R$)</span><input name="saldoInicial" type="number" step="0.01" placeholder="0,00"></div>
-      <button class="btn-primary" type="submit">Salvar conta</button>
+      <div class="field"><span>Saldo inicial</span><input name="saldoInicial" type="text" inputmode="decimal" class="currency-input" value="${editing ? fmtBRL(acc.saldoInicial||0) : ''}" placeholder="R$ 0,00"></div>
+      <button class="btn-primary" type="submit">${editing ? 'Salvar alterações' : 'Salvar conta'}</button>
+      ${editing ? `<button class="btn-ghost" type="button" id="cancelAccountBtn" style="width:100%; margin-top:10px; text-align:center;">Sair (sem salvar)</button>` : ''}
     </form>`);
+  if(editing){
+    document.getElementById('cancelAccountBtn').addEventListener('click', () => closeModal());
+  }
 }
 
-function openTransactionForm(){
-  if(!accounts.length){ openAccountForm(); return; }
+function openTransactionForm(presetContaId){
+  const activeAccs = accounts.filter(a => a.ativo!==false);
+  if(!activeAccs.length){ openAccountForm(); return; }
+  const returnTo = presetContaId ? 'statement' : '';
+
   openModal(`
     <p class="sheet-title">Nova transação</p>
     <form id="transactionForm">
-      <div class="segmented" id="tipoSeg">
+      <input type="hidden" name="returnTo" value="${returnTo}">
+      <div class="segmented segmented-3" id="tipoSeg">
         <button type="button" class="active" data-tipo="entrada">Entrada</button>
         <button type="button" data-tipo="saida">Saída</button>
+        <button type="button" data-tipo="transferencia">Transferência</button>
       </div>
       <input type="hidden" name="tipo" value="entrada">
-      <div class="field"><span>Valor (R$)</span><input name="valor" type="number" step="0.01" placeholder="0,00" required></div>
+      <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" placeholder="R$ 0,00" required></div>
       <div class="field"><span>Data</span><input name="data" type="date" value="${todayStr()}" required></div>
       <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Supermercado"></div>
-      <div class="field"><span>Categoria</span><select name="categoria" id="catSelect">${CAT_ENTRADA.map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><span>Conta</span><select name="contaId" required><option value="" disabled selected>Selecione</option>${accounts.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
+      <div class="field" id="categoriaField"><span>Categoria</span><select name="categoria" id="catSelect">${CAT_ENTRADA.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><span id="contaLabel">Conta</span><select name="contaId" required>
+        <option value="" disabled ${presetContaId?'':'selected'}>Selecione</option>
+        ${activeAccs.map(a=>`<option value="${a.id}" ${a.id===presetContaId?'selected':''}>${esc(a.nome)}</option>`).join('')}
+      </select></div>
+      <div class="field hidden-field" id="destinoField"><span>Conta de destino</span><select name="contaDestinoId">
+        <option value="" disabled selected>Selecione</option>
+        ${activeAccs.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}
+      </select></div>
+      <label class="checkbox-row"><input type="checkbox" name="consolidado" checked><span>Transação já consolidada</span></label>
+
+      <label class="checkbox-row"><input type="checkbox" id="recorrenteCheck"><span>Repetir esta transação (lançamentos futuros)</span></label>
+      <div class="field hidden-field" id="recorrenciaFields">
+        <span>Frequência</span>
+        <select name="frequencia" id="freqSelect">
+          <option value="semana">Semanal</option>
+          <option value="mes" selected>Mensal</option>
+          <option value="trimestre">Trimestral (a cada 3 meses)</option>
+          <option value="quadrimestre">Quadrimestral (a cada 4 meses)</option>
+          <option value="semestre">Semestral (a cada 6 meses)</option>
+          <option value="ano">Anual</option>
+        </select>
+        <span style="margin-top:10px; display:block;">Quantas vezes (incluindo esta)</span>
+        <input type="number" name="ocorrencias" min="1" max="60" value="12">
+        <p class="muted small" style="margin-top:6px;">As próximas datas são geradas automaticamente a partir da data acima. Lançamentos futuros ficam pendentes até a data chegar.</p>
+      </div>
+
       <button class="btn-primary" type="submit">Lançar</button>
     </form>`);
+
+  document.getElementById('recorrenteCheck').addEventListener('change', (e) => {
+    document.getElementById('recorrenciaFields').classList.toggle('hidden-field', !e.target.checked);
+  });
+
   document.getElementById('tipoSeg').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-tipo]'); if(!btn) return;
     document.querySelectorAll('#tipoSeg button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    document.querySelector('#transactionForm input[name="tipo"]').value = btn.dataset.tipo;
-    const catSelect = document.getElementById('catSelect');
-    catSelect.innerHTML = (btn.dataset.tipo==='entrada'?CAT_ENTRADA:CAT_SAIDA).map(c=>`<option>${c}</option>`).join('');
+    const tipo = btn.dataset.tipo;
+    document.querySelector('#transactionForm input[name="tipo"]').value = tipo;
+    const catField = document.getElementById('categoriaField');
+    const destField = document.getElementById('destinoField');
+    const contaLabel = document.getElementById('contaLabel');
+    const destSelect = document.querySelector('#transactionForm select[name="contaDestinoId"]');
+    if(tipo === 'transferencia'){
+      catField.classList.add('hidden-field');
+      destField.classList.remove('hidden-field');
+      contaLabel.textContent = 'Conta de origem';
+      destSelect.required = true;
+    } else {
+      catField.classList.remove('hidden-field');
+      destField.classList.add('hidden-field');
+      contaLabel.textContent = 'Conta';
+      destSelect.required = false;
+      const catSelect = document.getElementById('catSelect');
+      catSelect.innerHTML = (tipo==='entrada'?CAT_ENTRADA:CAT_SAIDA).map(c=>`<option>${c}</option>`).join('');
+    }
   });
 }
+
+/* =========================== editar / remover transação =========================== */
+function openEditTransactionForm(txId){
+  const t = transactions.find(x => x.id === txId);
+  if(!t) return;
+  const baseCats = t.tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA;
+  const categorias = baseCats.includes(t.categoria) ? baseCats : [t.categoria, ...baseCats];
+  const activeAccs = accounts.filter(a => a.ativo !== false || a.id === t.contaId);
+
+  let origemId = t.contaId, destinoId = '';
+  if(t.transferId){
+    const pair = transactions.find(x => x.transferId === t.transferId && x.id !== t.id);
+    const fromTx = t.tipo === 'saida' ? t : pair;
+    const toTx = t.tipo === 'entrada' ? t : pair;
+    origemId = fromTx ? fromTx.contaId : t.contaId;
+    destinoId = toTx ? toTx.contaId : '';
+  }
+  const contaOptions = accounts.filter(a => a.ativo !== false || a.id === origemId || a.id === destinoId);
+  const tipoInicial = t.transferId ? 'transferencia' : t.tipo;
+
+  openModal(`
+    <p class="sheet-title">Editar transação</p>
+    <form id="editTransactionForm" data-id="${t.id}" class="compact-form">
+      <div class="segmented segmented-3" id="editTipoSeg">
+        <button type="button" class="${tipoInicial==='entrada'?'active':''}" data-tipo="entrada">Entrada</button>
+        <button type="button" class="${tipoInicial==='saida'?'active':''}" data-tipo="saida">Saída</button>
+        <button type="button" class="${tipoInicial==='transferencia'?'active':''}" data-tipo="transferencia">Transferência</button>
+      </div>
+      <input type="hidden" name="tipo" value="${tipoInicial}">
+      <div class="field-row">
+        <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" value="${fmtBRL(t.valor)}" required></div>
+        <div class="field"><span>Data</span><input name="data" type="date" value="${t.data}" required></div>
+      </div>
+      <div class="field"><span>Descrição</span><input name="descricao" value="${esc(t.descricao)}"></div>
+      <div class="field-row">
+        <div class="field ${tipoInicial==='transferencia'?'hidden-field':''}" id="editCategoriaField"><span>Categoria</span><select name="categoria" id="editCatSelect">${categorias.map(c=>`<option ${c===t.categoria?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+        <div class="field"><span id="editContaLabel">${tipoInicial==='transferencia'?'Origem':'Conta'}</span><select name="contaId" required>${contaOptions.map(a=>`<option value="${a.id}" ${a.id===origemId?'selected':''}>${esc(a.nome)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field ${tipoInicial==='transferencia'?'':'hidden-field'}" id="editDestinoField"><span>Conta de destino</span><select name="contaDestinoId">
+        <option value="" disabled ${destinoId?'':'selected'}>Selecione</option>
+        ${activeAccs.map(a=>`<option value="${a.id}" ${a.id===destinoId?'selected':''}>${esc(a.nome)}</option>`).join('')}
+      </select></div>
+      <label class="checkbox-row"><input type="checkbox" name="consolidado" ${t.consolidado?'checked':''}><span>Transação já consolidada</span></label>
+      <button class="btn-primary" type="submit">Salvar alterações</button>
+      <div class="field-row" style="margin-top:8px;">
+        <button class="btn-ghost" type="button" id="cancelEditBtn">Sair</button>
+        <button class="btn-ghost" type="button" id="deleteTxBtn" style="color:var(--brick); border-color:var(--brick);">Remover</button>
+      </div>
+    </form>`);
+  sheet.classList.add('sheet-compact');
+
+  document.getElementById('editTipoSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tipo]'); if(!btn) return;
+    document.querySelectorAll('#editTipoSeg button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const tipo = btn.dataset.tipo;
+    document.querySelector('#editTransactionForm input[name="tipo"]').value = tipo;
+    const catField = document.getElementById('editCategoriaField');
+    const destField = document.getElementById('editDestinoField');
+    const contaLabel = document.getElementById('editContaLabel');
+    const destSelect = document.querySelector('#editTransactionForm select[name="contaDestinoId"]');
+    if(tipo === 'transferencia'){
+      catField.classList.add('hidden-field');
+      destField.classList.remove('hidden-field');
+      contaLabel.textContent = 'Origem';
+      destSelect.required = true;
+    } else {
+      catField.classList.remove('hidden-field');
+      destField.classList.add('hidden-field');
+      contaLabel.textContent = 'Conta';
+      destSelect.required = false;
+      const sel = document.getElementById('editCatSelect');
+      sel.innerHTML = (tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA).map(c => `<option>${esc(c)}</option>`).join('');
+    }
+  });
+
+  document.getElementById('cancelEditBtn').addEventListener('click', () => { closeModal(); });
+
+  document.getElementById('deleteTxBtn').addEventListener('click', () => {
+    const isTransfer = !!t.transferId;
+    const msg = isTransfer
+      ? 'Esta transação faz parte de uma transferência entre contas. Tem certeza que deseja excluir? As DUAS pontas da transferência serão removidas. Essa ação não pode ser desfeita.'
+      : 'Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.';
+    const ok = confirm(msg);
+    if(ok){
+      if(isTransfer){
+        const idsToRemove = transactions.filter(x => x.transferId === t.transferId).map(x => x.id);
+        transactions = transactions.filter(x => x.transferId !== t.transferId);
+        fsBatchDelete('transactions', idsToRemove);
+      } else {
+        transactions = transactions.filter(x => x.id !== t.id);
+        fsDeleteDoc('transactions', t.id);
+      }
+      closeModal();
+      render();
+    }
+  });
+}
+
+document.body.addEventListener('submit', (e) => {
+  if(e.target.id === 'editTransactionForm'){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const id = e.target.dataset.id;
+    const tipo = f.get('tipo');
+    const valor = parseCurrencyBRL(f.get('valor'));
+    const data = f.get('data');
+    const descricao = (f.get('descricao')||'').trim() || '(sem descrição)';
+    const consolidado = f.get('consolidado') === 'on';
+    const contaId = f.get('contaId');
+    const original = transactions.find(x => x.id === id);
+    if(!original){ closeModal(); render(); return; }
+    const pair = original.transferId ? transactions.find(x => x.transferId === original.transferId && x.id !== id) : null;
+
+    if(tipo === 'transferencia'){
+      const contaDestinoId = f.get('contaDestinoId');
+      if(!contaDestinoId || contaDestinoId === contaId){
+        alert('Selecione uma conta de destino diferente da conta de origem.');
+        return;
+      }
+      const transferId = original.transferId || uid();
+      if(pair){
+        // atualiza as duas pontas já existentes
+        Object.assign(original, { tipo:'saida', valor, data, descricao, categoria:'Transferência', contaId, consolidado, transferId });
+        Object.assign(pair, { tipo:'entrada', valor, data, descricao, categoria:'Transferência', contaId:contaDestinoId, consolidado, transferId });
+        fsBatchSet('transactions', [original, pair]);
+      } else {
+        // transforma a transação avulsa em uma transferência (cria a outra ponta)
+        Object.assign(original, { tipo:'saida', valor, data, descricao, categoria:'Transferência', contaId, consolidado, transferId });
+        const novo = { id:uid(), tipo:'entrada', valor, data, descricao, categoria:'Transferência', contaId:contaDestinoId, consolidado, transferId };
+        transactions.push(novo);
+        fsBatchSet('transactions', [original, novo]);
+      }
+    } else {
+      // remove o vínculo de transferência, se houver, e apaga a outra ponta
+      if(pair){ transactions = transactions.filter(x => x.id !== pair.id); fsDeleteDoc('transactions', pair.id); }
+      Object.assign(original, { tipo, valor, data, descricao, categoria: f.get('categoria'), contaId, consolidado, transferId: undefined });
+      delete original.transferId;
+      fsSetDoc('transactions', original);
+    }
+
+    closeModal();
+    render();
+  }
+});
 
 function openBillForm(){
   openModal(`
     <p class="sheet-title">Nova conta a pagar</p>
     <form id="billForm">
       <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Aluguel" required></div>
-      <div class="field"><span>Valor (R$)</span><input name="valor" type="number" step="0.01" placeholder="0,00" required></div>
+      <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" placeholder="R$ 0,00" required></div>
       <div class="field"><span>Vencimento</span><input name="vencimento" type="date" value="${todayStr()}" required></div>
       <div class="field"><span>Categoria</span><select name="categoria">${CAT_SAIDA.map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
+      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.filter(a=>a.ativo!==false).map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
       <label class="checkbox-row"><input type="checkbox" name="recorrente"><span>Conta recorrente (mensal)</span></label>
       <button class="btn-primary" type="submit">Salvar</button>
     </form>`);
@@ -633,21 +1361,86 @@ document.body.addEventListener('submit', (e) => {
   if(e.target.id === 'accountForm'){
     e.preventDefault();
     const f = new FormData(e.target);
-    accounts.push({ id:uid(), nome:f.get('nome').trim(), banco:f.get('banco').trim(), tipo:f.get('tipo'), saldoInicial: parseFloat(f.get('saldoInicial'))||0 });
+    const editId = e.target.dataset.id;
+    if(editId){
+      const acc = accounts.find(a => a.id === editId);
+      if(acc){
+        acc.nome = f.get('nome').trim();
+        acc.banco = f.get('banco').trim();
+        acc.tipo = f.get('tipo');
+        acc.saldoInicial = parseCurrencyBRL(f.get('saldoInicial'));
+        fsSetDoc('accounts', acc);
+      }
+    } else {
+      const novaConta = { id:uid(), nome:f.get('nome').trim(), banco:f.get('banco').trim(), tipo:f.get('tipo'), saldoInicial: parseCurrencyBRL(f.get('saldoInicial')), ativo:true };
+      accounts.push(novaConta);
+      fsSetDoc('accounts', novaConta);
+    }
     closeModal(); render();
   }
   if(e.target.id === 'transactionForm'){
     e.preventDefault();
     const f = new FormData(e.target);
-    transactions.push({ id:uid(), tipo:f.get('tipo'), valor:parseFloat(f.get('valor')), data:f.get('data'),
-      descricao:(f.get('descricao')||'').trim()||'(sem descrição)', categoria:f.get('categoria'), contaId:f.get('contaId') });
-    closeModal(); render();
+    const tipo = f.get('tipo');
+    const contaId = f.get('contaId');
+    const valor = parseCurrencyBRL(f.get('valor'));
+    const dataBase = f.get('data');
+    const descricao = (f.get('descricao')||'').trim();
+    const consolidadoChecked = f.get('consolidado') === 'on';
+    const returnTo = f.get('returnTo');
+    const recorrente = document.getElementById('recorrenteCheck').checked;
+    const freq = f.get('frequencia');
+    const ocorrencias = recorrente ? Math.min(60, Math.max(1, parseInt(f.get('ocorrencias'),10) || 1)) : 1;
+    const today = todayStr();
+    const newTxs = [];
+
+    if(tipo === 'transferencia'){
+      const contaDestinoId = f.get('contaDestinoId');
+      if(!contaDestinoId || contaDestinoId === contaId){
+        alert('Selecione uma conta de destino diferente da conta de origem.');
+        return;
+      }
+      const desc = descricao || 'Transferência entre contas';
+      const recorrenciaId = ocorrencias > 1 ? uid() : null;
+      for(let i = 0; i < ocorrencias; i++){
+        const data = i === 0 ? dataBase : addRecurrence(dataBase, freq, i);
+        const consolidado = consolidadoChecked && data <= today;
+        const transferId = uid();
+        const t1 = { id:uid(), tipo:'saida', valor, data, descricao:desc, categoria:'Transferência', contaId, consolidado, transferId, recorrenciaId };
+        const t2 = { id:uid(), tipo:'entrada', valor, data, descricao:desc, categoria:'Transferência', contaId:contaDestinoId, consolidado, transferId, recorrenciaId };
+        transactions.push(t1); transactions.push(t2);
+        newTxs.push(t1, t2);
+      }
+      expandedGroups.add(contaId); expandedGroups.add(contaDestinoId);
+    } else {
+      const categoria = f.get('categoria');
+      const desc = descricao || '(sem descrição)';
+      const recorrenciaId = ocorrencias > 1 ? uid() : null;
+      for(let i = 0; i < ocorrencias; i++){
+        const data = i === 0 ? dataBase : addRecurrence(dataBase, freq, i);
+        const consolidado = consolidadoChecked && data <= today;
+        const t1 = { id:uid(), tipo, valor, data, descricao:desc, categoria, contaId, consolidado, recorrenciaId };
+        transactions.push(t1);
+        newTxs.push(t1);
+      }
+      expandedGroups.add(contaId);
+    }
+    fsBatchSet('transactions', newTxs);
+
+    if(returnTo === 'statement'){
+      render();
+      openAccountStatement(contaId, parseInt(dataBase.slice(5,7),10), parseInt(dataBase.slice(0,4),10));
+    } else {
+      closeModal(); render();
+    }
   }
   if(e.target.id === 'billForm'){
     e.preventDefault();
     const f = new FormData(e.target);
-    bills.push({ id:uid(), descricao:f.get('descricao').trim(), valor:parseFloat(f.get('valor')), vencimento:f.get('vencimento'),
-      categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false });
+    const novaConta = { id:uid(), descricao:f.get('descricao').trim(), valor:parseCurrencyBRL(f.get('valor')), vencimento:f.get('vencimento'),
+      categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false };
+    bills.push(novaConta);
+    fsSetDoc('bills', novaConta);
     closeModal(); render();
   }
 });
@@ -669,43 +1462,206 @@ document.body.addEventListener('click', (e) => {
   const action = btn.dataset.action;
 
   if(action === 'delete-account'){
-    accounts = accounts.filter(a => a.id !== btn.dataset.id);
-    transactions = transactions.filter(t => t.contaId !== btn.dataset.id);
-    render();
+    const acc = accounts.find(a => a.id === btn.dataset.id);
+    const nome = acc ? acc.nome : 'esta conta';
+    const ok = confirm(`Tem certeza que deseja excluir a conta "${nome}"? Todas as transações dela também serão apagadas. Essa ação não pode ser desfeita.`);
+    if(ok){
+      const idsToRemove = transactions.filter(t => t.contaId === btn.dataset.id).map(t => t.id);
+      accounts = accounts.filter(a => a.id !== btn.dataset.id);
+      transactions = transactions.filter(t => t.contaId !== btn.dataset.id);
+      fsDeleteDoc('accounts', btn.dataset.id);
+      fsBatchDelete('transactions', idsToRemove);
+      render();
+    }
   }
+  if(action === 'edit-account'){ openAccountForm(btn.dataset.id); }
   if(action === 'delete-transaction'){
-    transactions = transactions.filter(t => t.id !== btn.dataset.id);
-    render();
+    const ok = confirm('Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.');
+    if(ok){
+      transactions = transactions.filter(t => t.id !== btn.dataset.id);
+      fsDeleteDoc('transactions', btn.dataset.id);
+      if(document.getElementById('stmtResults')) refreshStatementBody();
+      render();
+    }
   }
   if(action === 'delete-bill'){
-    bills = bills.filter(b => b.id !== btn.dataset.id);
-    render();
+    const ok = confirm('Tem certeza que deseja excluir esta conta a pagar? Essa ação não pode ser desfeita.');
+    if(ok){
+      bills = bills.filter(b => b.id !== btn.dataset.id);
+      fsDeleteDoc('bills', btn.dataset.id);
+      render();
+    }
   }
   if(action === 'mark-paid'){
     const bill = bills.find(b => b.id === btn.dataset.id);
     if(bill){
       bill.pago = true; bill.dataPagamento = todayStr();
+      fsSetDoc('bills', bill);
       if(bill.contaId){
-        transactions.push({ id:uid(), tipo:'saida', valor:bill.valor, data:todayStr(), descricao:bill.descricao, categoria:bill.categoria, contaId:bill.contaId });
+        const novaTx = { id:uid(), tipo:'saida', valor:bill.valor, data:todayStr(), descricao:bill.descricao, categoria:bill.categoria, contaId:bill.contaId, consolidado:true };
+        transactions.push(novaTx);
+        fsSetDoc('transactions', novaTx);
       }
     }
     render();
   }
   if(action === 'filter-transactions'){ filterTipo = btn.dataset.value; render(); }
+  if(action === 'filter-account'){ txFilterAccountId = btn.dataset.id || null; render(); }
+  if(action === 'set-period-recent'){ txPeriod = { mode:'recent' }; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
+  if(action === 'toggle-tx-group'){
+    const id = btn.dataset.id;
+    if(expandedGroups.has(id)) expandedGroups.delete(id); else expandedGroups.add(id);
+    render();
+  }
+  if(action === 'load-more-tx'){
+    const id = btn.dataset.id;
+    groupVisible[id] = (groupVisible[id] || 20) + 20;
+    render();
+  }
+
+  if(action === 'toggle-account-active'){
+    const acc = accounts.find(a => a.id === btn.dataset.id);
+    if(acc){
+      acc.ativo = acc.ativo === false ? true : false;
+      fsSetDoc('accounts', acc);
+    }
+    persist();
+    if(document.getElementById('accountsToggleList')) openAccountsToggleSheet();
+    render();
+  }
+  if(action === 'open-search'){ openSearchSheet(); }
+  if(action === 'open-accounts-toggle'){ openAccountsToggleSheet(); }
+  if(action === 'save-cloud'){ saveToCloud(); }
+  if(action === 'open-account-statement'){ openAccountStatement(btn.dataset.id); }
+  if(action === 'edit-transaction'){ openEditTransactionForm(btn.dataset.id); }
+  if(action === 'add-tx-to-account'){ openTransactionForm(btn.dataset.id); }
+  if(action === 'toggle-consolidado'){
+    const tx = transactions.find(x => x.id === btn.dataset.id);
+    if(tx){
+      tx.consolidado = !tx.consolidado;
+      fsSetDoc('transactions', tx);
+    }
+    persist();
+    if(document.getElementById('stmtResults')){ refreshStatementBody(); }
+    else if(document.getElementById('searchResults')){
+      const inp = document.getElementById('searchTxInput');
+      renderSearchResults(inp ? inp.value : '');
+    } else {
+      render();
+    }
+  }
 });
 
 /* =========================== chart.js load listeners =========================== */
 window.addEventListener('chartjs-ready', () => { if (activeTab === 'dashboard') renderCharts(); });
 window.addEventListener('chartjs-unavailable', () => { if (activeTab === 'dashboard') renderChartsFallback(); });
 
+/* =========================== busca de transações (dashboard) =========================== */
+function openSearchSheet(){
+  openModal(`
+    <p class="sheet-title">Localizar transação</p>
+    <div class="field"><span>Buscar por descrição, categoria ou conta</span>
+      <input type="text" id="searchTxInput" placeholder="Ex: mercado, salário, aluguel..." autofocus>
+    </div>
+    <div id="searchResults" class="ledger" style="margin-top:6px;"></div>
+  `);
+  renderSearchResults('');
+  setTimeout(() => { const el = document.getElementById('searchTxInput'); if(el) el.focus(); }, 50);
+}
+
+function renderSearchResults(query){
+  const box = document.getElementById('searchResults');
+  if(!box) return;
+  const q = query.trim().toLowerCase();
+  if(!q){ box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Digite para buscar entre ${transactions.length} transações.</p>`; return; }
+
+  const accountName = (id) => { const a = accounts.find(x=>x.id===id); return a ? a.nome : ''; };
+  const matches = transactions.filter(t =>
+    (t.descricao||'').toLowerCase().includes(q) ||
+    (t.categoria||'').toLowerCase().includes(q) ||
+    accountName(t.contaId).toLowerCase().includes(q)
+  ).sort((a,b) => b.data.localeCompare(a.data)).slice(0, 60);
+
+  if(!matches.length){ box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Nenhuma transação encontrada.</p>`; return; }
+
+  box.innerHTML = `
+    <p class="muted small" style="padding:4px 2px 8px 2px;">${matches.length}${matches.length===60?'+':''} resultado(s)</p>
+    ${matches.map(t => `
+    <div class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
+      <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+      <span class="dot ${t.tipo}"></span>
+      <div class="ledger-main">
+        <p class="ledger-desc">${esc(t.descricao)}</p>
+        <p class="muted small">${fmtDate(t.data)} · ${esc(t.categoria)} · ${esc(accountName(t.contaId))}</p>
+      </div>
+      <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
+    </div>`).join('')}`;
+}
+
+document.body.addEventListener('input', (e) => {
+  if(e.target.id === 'searchTxInput') renderSearchResults(e.target.value);
+});
+
+/* =========================== ativar / inativar conta (dashboard) =========================== */
+function openAccountsToggleSheet(){
+  const rows = accounts.length ? accounts.map(a => {
+    const ativa = a.ativo !== false;
+    return `<li class="reminder-row">
+      <div>
+        <p class="reminder-desc">${esc(a.nome)}</p>
+        <p class="muted small">${esc(a.banco)||'—'} · ${esc(a.tipo)} · ${ativa ? '<span style="color:var(--ledger); font-weight:600;">Ativa</span>' : '<span class="inactive-tag">Inativa</span>'}</p>
+      </div>
+      <div class="reminder-right">
+        <button class="btn-ghost small" data-action="toggle-account-active" data-id="${a.id}">${ativa ? 'Inativar' : 'Ativar'}</button>
+      </div>
+    </li>`;
+  }).join('') : '';
+
+  openModal(`
+    <p class="sheet-title">Ativar / inativar conta</p>
+    <p class="muted small" style="margin:-6px 0 14px 0">Contas inativas somem das opções de nova transação e não entram no saldo total, mas o histórico continua salvo.</p>
+    <ul class="reminder-list" id="accountsToggleList">
+      ${rows || '<p class="muted small">Nenhuma conta cadastrada ainda.</p>'}
+    </ul>
+  `);
+}
+
+/* =========================== salvar na nuvem (dashboard) =========================== */
+async function saveToCloud(){
+  const payload = JSON.stringify({ accounts, transactions, bills });
+  const filename = `livro-caixa-backup-${todayStr()}.json`;
+  const file = new File([payload], filename, { type: 'application/json' });
+
+  // Usa o menu de compartilhar do celular (permite salvar direto no Google Drive,
+  // iCloud, Dropbox etc.) quando disponível; senão, baixa o arquivo normalmente.
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Backup Livro-Caixa', text: 'Backup dos dados do Livro-Caixa' });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // usuário cancelou
+      // se falhar, cai no download abaixo
+    }
+  }
+  const blob = new Blob([payload], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /* =========================== import / export =========================== */
-function openDataSheet(){
+async function openDataSheet(){
   const changelogHtml = CHANGELOG.map(c => `
     <div class="changelog-entry">
       <p class="changelog-version">v${c.v} <span class="muted small">· ${fmtDate(c.data)}</span></p>
       <ul>${c.mudancas.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
     </div>`).join('');
+
+  const existingConfig = await loadFirebaseConfig();
+  const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
 
   openModal(`
     <p class="sheet-title">Dados do app</p>
@@ -716,10 +1672,58 @@ function openDataSheet(){
     <p class="muted small" id="importStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
+    <p class="sheet-title" style="font-size:15px;">Sincronização em nuvem (Firebase)</p>
+    <p class="muted small" style="margin:-6px 0 12px 0;">
+      Status: <strong style="color:${fbReady?'var(--ledger)':'var(--brick)'}">${fbReady ? 'Conectado ☁' : 'Não conectado'}</strong><br>
+      Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real.
+    </p>
+    <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
+      <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
+    </div>
+    <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e conectar</button>
+    ${existingConfig ? `<button class="btn-ghost" id="removeFbConfigBtn" type="button" style="width:100%; margin-top:8px; text-align:center; color:var(--brick); border-color:var(--brick);">Desconectar</button>` : ''}
+    ${fbReady ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Enviar dados deste aparelho para a nuvem agora</button>` : ''}
+    <p class="muted small" id="fbStatus" style="margin-top:10px;"></p>
+
+    <div class="sheet-divider"></div>
     <p class="sheet-title" style="font-size:15px;">Sobre esta versão</p>
     <p class="muted small" style="margin:-8px 0 12px 0">Versão instalada: <strong style="color:var(--ink)">v${APP_VERSION}</strong></p>
     <div class="changelog-list">${changelogHtml}</div>
   `);
+
+  const saveBtn = document.getElementById('saveFbConfigBtn');
+  if(saveBtn) saveBtn.addEventListener('click', async () => {
+    const status = document.getElementById('fbStatus');
+    const raw = document.getElementById('fbConfigInput').value.trim();
+    if(!raw){ if(status) status.textContent = 'Cole a configuração do Firebase primeiro.'; return; }
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch(e){ if(status) status.textContent = 'JSON inválido. Confira se copiou o objeto certinho, com aspas nas chaves.'; return; }
+    if(!parsed.apiKey || !parsed.projectId){ if(status) status.textContent = 'Configuração incompleta (faltam apiKey/projectId).'; return; }
+    if(status) status.textContent = 'Conectando...';
+    await saveFirebaseConfig(parsed);
+    await initFirebase();
+    if(status) status.textContent = fbReady ? 'Conectado com sucesso!' : 'Não foi possível conectar. Confira a configuração e as regras do Firestore.';
+    render();
+  });
+
+  const removeBtn = document.getElementById('removeFbConfigBtn');
+  if(removeBtn) removeBtn.addEventListener('click', async () => {
+    await clearFirebaseConfig();
+    fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
+    fbUnsubscribers = [];
+    fbReady = false;
+    render();
+    openDataSheet();
+  });
+
+  const syncBtn = document.getElementById('syncNowBtn');
+  if(syncBtn) syncBtn.addEventListener('click', async () => {
+    const status = document.getElementById('fbStatus');
+    syncBtn.disabled = true;
+    await syncAllToFirebase((msg) => { if(status) status.textContent = msg; });
+    syncBtn.disabled = false;
+  });
 }
 
 document.body.addEventListener('click', (e) => {
@@ -749,6 +1753,8 @@ document.body.addEventListener('click', (e) => {
         accounts = data.accounts;
         transactions = data.transactions;
         bills = Array.isArray(data.bills) ? data.bills : [];
+        accounts.forEach(a => { if (a.ativo === undefined) a.ativo = true; });
+        migrateData();
         closeModal();
         render();
       } catch (err) {
@@ -761,7 +1767,7 @@ document.body.addEventListener('click', (e) => {
 });
 
 /* =========================== init =========================== */
-loadInitialState().then(render);
+loadInitialState().then(() => { render(); initFirebase(); });
 
 /* =========================== PWA: service worker + install prompt =========================== */
 if ("serviceWorker" in navigator) {

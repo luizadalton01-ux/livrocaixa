@@ -1,7 +1,7 @@
 // O nome do cache muda a cada versão do app (ver APP_VERSION em index.html).
 // Isso garante que usuários que já instalaram o app recebam os arquivos
 // novos automaticamente, em vez de continuar servindo a versão antiga do cache.
-const CACHE_NAME = "livro-caixa-v1.4.0";
+const CACHE_NAME = "livro-caixa-v1.17.0";
 const CORE_ASSETS = [
   "./",
   "./index.html",
