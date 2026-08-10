@@ -41,6 +41,8 @@
   :root{
     --paper:#F6F4EC; --paper-raised:#FFFFFF; --ink:#16233A; --ledger:#1B4332; --ledger-light:#2D6A4F;
     --gold:#C9A227; --brick:#B3432B; --line:#E1DCCB; --muted:#6B6553;
+    --teal:#1C6E7A; --teal-light:#2E93A2; --plum:#6E4C88; --amber:#E4B84A; --rose:#C9695F;
+    --shadow-sm:0 1px 3px rgba(22,35,58,0.06); --shadow-md:0 4px 16px rgba(22,35,58,0.10);
   }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body{ margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif;
@@ -48,25 +50,28 @@
   #app{ display:flex; flex-direction:column; min-height:100vh; min-height:100dvh; }
 
   /* ---- topbar ---- */
-  .topbar{ background:var(--ink); color:#fff; padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 16px 18px;
-    position:sticky; top:0; z-index:20; }
+  .topbar{ background:linear-gradient(135deg, var(--ink) 0%, #1D3350 55%, var(--ledger) 130%); color:#fff;
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 16px 18px;
+    position:sticky; top:0; z-index:20; box-shadow:var(--shadow-md); }
   .topbar-row{ display:flex; align-items:center; gap:10px; }
-  .brand-mark{ width:34px; height:34px; border-radius:8px; background:var(--gold); color:var(--ink);
-    display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:13px; flex-shrink:0; }
+  .brand-mark{ width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg, var(--amber), var(--gold)); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:13px; flex-shrink:0;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25); }
   .brand-text h1{ font-family:'Fraunces',serif; font-weight:600; font-size:17px; margin:0; display:flex; align-items:center; gap:7px; }
   .version-badge{ font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; color:var(--ink);
     background:var(--gold); border-radius:10px; padding:2px 7px; letter-spacing:0.3px; }
   .brand-text p{ margin:0; font-size:11px; color:#AEB8C6; }
-  .sync-badge{ color:#8FD9B0; font-weight:600; }
-  .install-btn{ margin-left:8px; background:var(--gold); color:var(--ink); border:none; border-radius:20px;
+  .sync-badge{ color:#7BE0B8; font-weight:600; }
+  .install-btn{ margin-left:8px; background:linear-gradient(135deg, var(--amber), var(--gold)); color:var(--ink); border:none; border-radius:20px;
     padding:7px 13px; font-size:11.5px; font-weight:700; font-family:'Inter',sans-serif; flex-shrink:0; }
   .install-btn.hidden{ display:none; }
-  .icon-topbtn{ margin-left:auto; background:rgba(255,255,255,0.1); border:none; border-radius:8px; color:#fff;
+  .icon-topbtn{ margin-left:auto; background:rgba(255,255,255,0.12); border:none; border-radius:8px; color:#fff;
     width:32px; height:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .icon-topbtn svg{ width:16px; height:16px; }
   .balance-strip{ margin-top:14px; }
   .balance-strip .label{ font-size:11px; color:#AEB8C6; margin:0; }
-  .balance-strip .value{ font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:600; margin:2px 0 0 0; }
+  .balance-strip .value{ font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:600; margin:2px 0 0 0;
+    background:linear-gradient(90deg, #FFFFFF, #F2DFA0); -webkit-background-clip:text; background-clip:text; color:transparent; }
 
   /* ---- content ---- */
   #content{ flex:1; padding:16px 14px 90px 14px; max-width:640px; width:100%; margin:0 auto; }
@@ -75,18 +80,30 @@
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .quick-actions{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
   .quick-btn{ flex:0 0 auto; display:flex; align-items:center; gap:6px; background:var(--paper-raised); border:1px solid var(--line);
-    border-radius:20px; padding:9px 14px; font-size:12px; font-weight:600; color:var(--ink); white-space:nowrap; font-family:'Inter',sans-serif; }
+    border-radius:20px; padding:9px 14px; font-size:12px; font-weight:600; color:var(--ink); white-space:nowrap; font-family:'Inter',sans-serif;
+    box-shadow:var(--shadow-sm); }
   .quick-btn svg{ flex-shrink:0; color:var(--ledger); }
-  .summary-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:13px; }
+  .quick-btn:nth-child(2) svg{ color:var(--teal); }
+  .quick-btn:nth-child(3) svg{ color:var(--plum); }
+  .summary-card{ background:var(--paper-raised); border:1px solid var(--line); border-left:3px solid var(--line);
+    border-radius:12px; padding:13px; box-shadow:var(--shadow-sm); }
   .summary-icon{ width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
-  .tone-ink .summary-icon{ background:#16233A1A; color:var(--ink); }
-  .tone-green .summary-icon{ background:#1B433220; color:var(--ledger); }
-  .tone-brick .summary-icon{ background:#B3432B1A; color:var(--brick); }
-  .tone-gold .summary-icon{ background:#C9A22726; color:#8A6D1A; }
+  .tone-ink{ border-left-color:var(--ink); background:linear-gradient(180deg, #FFFFFF, #F2F4F8); }
+  .tone-ink .summary-icon{ background:#16233A1F; color:var(--ink); }
+  .tone-green{ border-left-color:var(--ledger); background:linear-gradient(180deg, #FFFFFF, #EAF6EF); }
+  .tone-green .summary-icon{ background:#1B433224; color:var(--ledger); }
+  .tone-green .summary-value{ color:var(--ledger); }
+  .tone-brick{ border-left-color:var(--brick); background:linear-gradient(180deg, #FFFFFF, #FBEDE9); }
+  .tone-brick .summary-icon{ background:#B3432B1F; color:var(--brick); }
+  .tone-brick .summary-value{ color:var(--brick); }
+  .tone-gold{ border-left-color:var(--gold); background:linear-gradient(180deg, #FFFFFF, #FBF3DC); }
+  .tone-gold .summary-icon{ background:#C9A2272E; color:#8A6D1A; }
   .summary-label{ margin:0 0 3px 0; font-size:11px; color:var(--muted); }
   .summary-value{ margin:0; font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:600; }
 
-  .panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:16px;
+    box-shadow:var(--shadow-sm); border-top:3px solid transparent;
+    border-image:linear-gradient(90deg, var(--gold), var(--teal-light)) 1; }
   .panel h2{ font-family:'Fraunces',serif; font-size:15px; font-weight:600; margin:0 0 12px 0; display:flex; align-items:center; gap:6px; }
   .panel h2 .muted{ font-size:11px; font-weight:400; margin-left:2px; }
   .chart-wrap{ position:relative; height:210px; }
@@ -96,6 +113,8 @@
   .reminder-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
   .reminder-row{ display:flex; align-items:flex-start; gap:8px; padding:11px 2px; border-bottom:1px dashed var(--line); flex-wrap:wrap; }
   .reminder-row:last-child{ border-bottom:none; }
+  .reminder-row.select-mode{ cursor:pointer; align-items:center; }
+  .reminder-row.selected{ background:#EAF6EF; border-radius:8px; }
   .reminder-desc{ margin:0; font-weight:500; font-size:13.5px; }
   .reminder-right{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .amount{ font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; white-space:nowrap; }
@@ -110,17 +129,28 @@
 
   .filter-row{ display:flex; gap:6px; flex-wrap:wrap; }
   .notif-status{ margin:-4px 0 4px 0; }
+  .filters-panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:12px;
+    display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow-sm); }
   .chip{ border:1px solid var(--line); background:var(--paper-raised); border-radius:20px; padding:6px 13px;
     font-size:12px; color:var(--muted); }
-  .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .chip.active{ background:linear-gradient(135deg, var(--ink), var(--ledger)); color:#fff; border-color:var(--ink); }
+  .chip.chip-warn{ color:var(--brick); border-color:#E7C9BF; }
+  .chip.chip-warn.active{ background:linear-gradient(135deg, var(--rose), var(--brick)); color:#fff; border-color:var(--brick); }
 
   .account-grid{ display:flex; flex-direction:column; gap:7px; }
-  .account-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:9px 40px 9px 12px; position:relative; cursor:pointer; }
+  .accounts-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .accounts-stats > div{ background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:9px 8px; text-align:center; box-shadow:var(--shadow-sm); }
+  .accounts-stats .stat-value{ margin:2px 0 0 0; font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
+  .account-card{ background:var(--paper-raised); border:1px solid var(--line); border-left:3px solid var(--teal-light);
+    border-radius:10px; padding:9px 40px 9px 12px; position:relative; cursor:pointer; box-shadow:var(--shadow-sm); }
   .account-card.zebra-a{ background:var(--paper-raised); }
   .account-card.zebra-b{ background:#FBF7EC; }
-  .account-card.inactive{ opacity:0.6; background:#F1EEE3; }
+  .account-card.inactive{ opacity:0.6; background:#F1EEE3; border-left-color:var(--line); }
   .inactive-tag{ color:var(--brick); font-weight:600; }
   .account-card h3{ font-family:'Fraunces',serif; font-size:13.5px; margin:1px 0 4px 0; }
+  .type-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+  .account-card.select-mode{ cursor:pointer; }
+  .account-card.selected{ background:#EAF6EF !important; border-left-color:var(--ledger) !important; box-shadow:0 0 0 1.5px var(--ledger); }
   .account-balance{ font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:600; margin:0; }
   .icon-btn{ background:none; border:none; padding:4px; border-radius:6px; color:var(--muted); }
   .account-card .icon-btn.danger{ position:absolute; top:6px; right:6px; }
@@ -134,6 +164,7 @@
   .ledger-row:last-child{ border-bottom:none; }
   .ledger-row.clickable{ cursor:pointer; }
   .ledger-row.clickable:active{ background:#F1EEE3; }
+  .ledger-row.selected{ background:#EAF6EF; border-radius:8px; }
   .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   .dot.entrada{ background:var(--ledger); }
   .dot.saida{ background:var(--brick); }
@@ -150,7 +181,7 @@
   .day-balance .amount{ font-size:12px; }
 
   .tx-groups{ display:flex; flex-direction:column; gap:8px; }
-  .tx-group{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .tx-group{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm); }
   .tx-group-header{ width:100%; display:flex; align-items:center; gap:10px; background:none; border:none; padding:13px 14px; text-align:left; font-family:'Inter',sans-serif; }
   .chevron{ flex-shrink:0; color:var(--muted); transition:transform 0.15s ease; }
   .chevron.open{ transform:rotate(90deg); color:var(--ink); }
@@ -165,7 +196,7 @@
     border-radius:12px; padding:8px; }
   .acct-chip{ background:none; border:none; border-radius:8px; padding:9px 8px; font-size:12.5px; line-height:1.3;
     font-family:'Inter',sans-serif; color:var(--ink); text-align:left; word-break:break-word; }
-  .acct-chip.active{ background:var(--ledger); color:#fff; font-weight:600; }
+  .acct-chip.active{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); color:#fff; font-weight:600; }
   .acct-chip.inactive{ color:var(--muted); opacity:0.75; }
   .acct-chip.inactive.active{ background:var(--muted); color:#fff; opacity:1; }
   .acct-chip-all{ font-weight:700; font-family:'Fraunces',serif; font-size:13px; border-bottom:1px solid var(--line); border-radius:0; padding-bottom:9px; margin-bottom:4px; }
@@ -176,10 +207,10 @@
   .period-row select{ font-family:'Inter',sans-serif; font-size:12px; padding:7px 8px; border:1px solid var(--line);
     border-radius:8px; background:#FCFBF7; color:var(--ink); }
 
-  .transfer-info{ display:flex; align-items:center; gap:12px; background:#FCFBF7; border:1px solid var(--line);
+  .transfer-info{ display:flex; align-items:center; gap:12px; background:#F4EFDD; border:1px solid var(--line);
     border-radius:10px; padding:12px 14px; }
   .transfer-info p{ margin:0; font-size:12.5px; flex:1; }
-  .transfer-info svg{ color:var(--gold); flex-shrink:0; }
+  .transfer-info svg{ color:#8A6D1A; flex-shrink:0; }
 
   .empty{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:5px; padding:30px 10px; color:var(--muted); }
   .empty-title{ margin:4px 0 0 0; font-weight:600; color:var(--ink); font-size:13.5px; }
@@ -187,16 +218,16 @@
 
   /* ---- FAB ---- */
   .fab{ position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 76px); width:54px; height:54px;
-    border-radius:50%; background:var(--ledger); color:#fff; border:none; font-size:26px; line-height:1;
+    border-radius:50%; background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); color:#fff; border:none; font-size:26px; line-height:1;
     box-shadow:0 6px 16px rgba(27,67,50,0.35); display:flex; align-items:center; justify-content:center; z-index:15; }
   .fab.hidden{ display:none; }
 
   /* ---- bottom nav ---- */
   .bottomnav{ position:fixed; bottom:0; left:0; right:0; background:var(--paper-raised); border-top:1px solid var(--line);
-    display:flex; padding-bottom:env(safe-area-inset-bottom,0px); z-index:20; }
-  .nav-btn{ flex:1; background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px;
-    padding:9px 2px 8px 2px; color:var(--muted); font-size:10.5px; font-family:'Inter',sans-serif; }
-  .nav-btn.active{ color:var(--ledger); }
+    display:flex; padding:6px 6px calc(env(safe-area-inset-bottom,0px) + 2px) 6px; gap:4px; z-index:20; }
+  .nav-btn{ flex:1; background:none; border:none; border-radius:12px; display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:8px 2px; color:var(--muted); font-size:10.5px; font-family:'Inter',sans-serif; transition:background 0.15s ease, color 0.15s ease; }
+  .nav-btn.active{ color:var(--ledger); background:#1B433216; font-weight:600; }
   .nav-btn svg{ width:20px; height:20px; }
 
   /* ---- modal / bottom sheet ---- */
@@ -229,6 +260,9 @@
     border-radius:9px; background:#FCFBF7; color:var(--ink); }
   .stmt-summary{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
   .stmt-summary > div{ background:#FCFBF7; border:1px solid var(--line); border-radius:9px; padding:9px 8px; text-align:center; }
+  .stmt-summary > div:nth-child(1){ background:#EAF6EF; }
+  .stmt-summary > div:nth-child(2){ background:#FBEDE9; }
+  .stmt-summary > div:nth-child(3){ background:#F2F4F8; }
   .stmt-summary .amount{ font-size:12.5px; display:block; margin-top:2px; }
 
   .sheet-divider{ border-top:1px solid var(--line); margin:20px 0 16px 0; }
@@ -246,10 +280,22 @@
 
   .consolidado-toggle{ width:18px; height:18px; border-radius:50%; border:1.5px solid var(--line); background:none;
     display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; color:#fff; }
-  .consolidado-toggle.on{ background:var(--ledger); border-color:var(--ledger); }
+  .consolidado-toggle.on{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); border-color:var(--ledger); }
 
-  .btn-primary{ background:var(--ledger); color:#fff; border:none; border-radius:9px; padding:13px 18px; font-size:14.5px;
-    font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:4px; }
+  .select-check{ width:19px; height:19px; border-radius:6px; border:1.5px solid var(--line); background:#fff;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; }
+  .select-check.on{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); border-color:var(--ledger); }
+  .account-card .select-check{ position:absolute; top:9px; right:9px; }
+
+  .selection-bar{ display:flex; flex-direction:column; gap:8px; background:#FBF3DC;
+    border:1px solid var(--gold); border-radius:10px; padding:9px 12px; }
+  .selection-bar-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .selection-bar .btn-ghost[disabled]{ opacity:0.45; }
+  .selection-bar .btn-ghost.small{ padding:5px 10px; font-size:11.5px; }
+  .selection-bar .btn-ghost svg{ vertical-align:-2px; margin-right:2px; width:13px; height:13px; }
+
+  .btn-primary{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); color:#fff; border:none; border-radius:9px; padding:13px 18px; font-size:14.5px;
+    font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:4px; box-shadow:0 3px 10px rgba(27,67,50,0.25); }
   .btn-ghost{ background:none; border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:12.5px;
     color:var(--ink); font-family:'Inter',sans-serif; }
 
@@ -257,14 +303,62 @@
     .cards{ grid-template-columns:repeat(4,1fr); }
     #content{ max-width:900px; }
     .tx-sidebar{ flex-basis:180px; width:180px; }
+    .account-grid{ display:grid; grid-template-columns:1fr 1fr; align-items:start; }
+    .period-row{ flex-wrap:nowrap; }
   }
   @media (max-width:360px){
     .tx-sidebar{ flex-basis:120px; width:120px; }
     .acct-chip{ font-size:11px; padding:8px 6px; }
   }
+
+  /* ---- loading screen: moedas caindo ---- */
+  .loading-screen{ position:fixed; inset:0; z-index:9999; background:var(--paper);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; transition:opacity 0.45s ease, visibility 0.45s ease; }
+  .loading-screen.hide{ opacity:0; visibility:hidden; pointer-events:none; }
+  .loading-coins{ position:relative; width:100%; max-width:260px; height:170px; }
+  .coin{ position:absolute; top:-30px; width:24px; height:24px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--amber), var(--gold) 60%, #93720F 100%);
+    box-shadow:0 3px 6px rgba(22,35,58,0.25), inset 0 0 0 2px rgba(255,255,255,0.35);
+    animation:coin-fall 1.7s cubic-bezier(.5,0,.85,.4) infinite; }
+  .coin::after{ content:'R$'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace; font-size:7.5px; font-weight:700; color:#5C4A12; }
+  @keyframes coin-fall{
+    0%{ transform:translateY(0) rotate(0deg); opacity:0; }
+    12%{ opacity:1; }
+    85%{ opacity:1; }
+    100%{ transform:translateY(168px) rotate(300deg); opacity:0; }
+  }
+  .coin.c1{ left:4%;  animation-delay:0s; }
+  .coin.c2{ left:18%; animation-delay:0.55s; }
+  .coin.c3{ left:32%; animation-delay:0.2s; }
+  .coin.c4{ left:47%; animation-delay:0.75s; }
+  .coin.c5{ left:61%; animation-delay:0.35s; }
+  .coin.c6{ left:75%; animation-delay:0.9s; }
+  .coin.c7{ left:89%; animation-delay:0.1s; }
+  .coin.c8{ left:55%; animation-delay:1.1s; }
+  .loading-mark{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; color:var(--ink); margin:2px 0 2px 0; }
+  .loading-text{ font-family:'Inter',sans-serif; font-size:12px; color:var(--muted); margin:0; }
+  @media (prefers-reduced-motion: reduce){
+    .coin{ animation:none; opacity:0.5; top:60px; }
+  }
 </style>
 </head>
 <body>
+<div id="loadingScreen" class="loading-screen">
+  <div class="loading-coins" aria-hidden="true">
+    <span class="coin c1"></span>
+    <span class="coin c2"></span>
+    <span class="coin c3"></span>
+    <span class="coin c4"></span>
+    <span class="coin c5"></span>
+    <span class="coin c6"></span>
+    <span class="coin c7"></span>
+    <span class="coin c8"></span>
+  </div>
+  <p class="loading-mark">Livro-Caixa</p>
+  <p class="loading-text">Carregando seus dados…</p>
+</div>
 <div id="app">
   <header class="topbar">
     <div class="topbar-row">
@@ -314,8 +408,25 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.22.0';
 const CHANGELOG = [
+  { v: '1.22.0', data: '2026-08-10', mudancas: [
+    'Botão "Selecionar tudo" (e "Desmarcar tudo") na seleção múltipla de Contas, Transações e A pagar, junto com a contagem "N selecionada(s) de M"',
+    'Nova tela de carregamento com animação de moedas caindo enquanto o app abre e busca os dados salvos',
+  ]},
+  { v: '1.21.0', data: '2026-08-10', mudancas: [
+    'Seleção múltipla nas abas Contas, Transações e A pagar: botão "Selecionar" habilita checkboxes e uma barra com "Remover" para excluir vários itens de uma vez',
+    'Exclusão em massa de transações remove automaticamente as duas pontas de transferências selecionadas',
+    'Exclusão em massa de contas remove também todas as transações vinculadas a elas, como já acontecia na exclusão individual',
+  ]},
+  { v: '1.20.0', data: '2026-08-10', mudancas: [
+    'Layout com mais cor e harmonia: topo com gradiente, cards de resumo, painéis, botões e navegação com paleta ampliada',
+    'Aba Contas: cada tipo de conta (Corrente, Poupança, Carteira, Investimento) agora tem uma cor própria no cartão',
+    'Gráfico de saídas por categoria agora usa uma cor fixa por categoria (Moradia, Alimentação, Transporte etc.)',
+    'Aba Contas: novo resumo no topo com total de contas ativas/inativas e saldo das ativas; cartões em 2 colunas em telas largas',
+    'Aba Transações: filtros reorganizados em um painel único; novas opções de período "Mês" e "Ano" (além de "Últimos 7 dias")',
+    'Aba Transações: novo botão "Não consolidadas" para filtrar só o que ainda falta bater com o banco, combinável com os demais filtros',
+  ]},
   { v: '1.19.0', data: '2026-08-09', mudancas: [
     'Confirmação "Deseja confirmar essa alteração?" em toda ação que grava ou muda dados (contas, transações, contas a pagar, ativar/inativar, marcar como paga)',
     'Corrigido: mudanças feitas nos primeiros segundos após abrir o app podiam não ser enviadas para a nuvem — agora toda escrita espera a conexão terminar de se estabelecer',
@@ -424,6 +535,10 @@ const DB_NAME = 'livrocaixa_db', DB_STORE = 'kv';
 let accounts = [], transactions = [], bills = [];
 let activeTab = 'dashboard';
 let filterTipo = 'todos';
+let filterConsolidado = 'todos';
+let acctSelectMode = false, selectedAccounts = new Set(), lastAccountsListIds = [];
+let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
+let billSelectMode = false, selectedBills = new Set(), lastBillsListIds = [];
 let filterBills = 'pendentes';
 let expandedGroups = new Set();
 let groupVisible = {};
@@ -807,6 +922,18 @@ function addRecurrence(dateStr, freq, times){
 const CAT_ENTRADA = ['Salário','Freelance','Investimentos','Reembolso','Outros'];
 const CAT_SAIDA = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Outros'];
 const PIE_COLORS = ['#1B4332','#C9A227','#B3432B','#2D6A4F','#7A6F52','#5B7B9A','#8C5E58','#4A4238'];
+const CAT_COLORS = {
+  'Moradia':'#1C6E7A', 'Alimentação':'#C9A227', 'Transporte':'#6E4C88', 'Saúde':'#B3432B',
+  'Educação':'#2D6A4F', 'Lazer':'#C9695F', 'Assinaturas':'#5B7B9A', 'Outros':'#8C7A54',
+  'Transferência':'#9C9483',
+};
+function categoryColor(cat){
+  if (CAT_COLORS[cat]) return CAT_COLORS[cat];
+  let hash = 0; for(let i=0;i<(cat||'').length;i++) hash = (hash*31 + cat.charCodeAt(i)) >>> 0;
+  return PIE_COLORS[hash % PIE_COLORS.length];
+}
+const ACCOUNT_TYPE_COLORS = { 'Corrente':'#1C6E7A', 'Poupança':'#1B4332', 'Carteira':'#C9A227', 'Investimento':'#6E4C88' };
+function accountTypeColor(tipo){ return ACCOUNT_TYPE_COLORS[tipo] || '#6B6553'; }
 
 function balanceOf(accId){
   const acc = accounts.find(a => a.id === accId);
@@ -828,6 +955,20 @@ function stampLabel(status){
 }
 function emptyState(iconSvg, title, hint){
   return `<div class="empty">${iconSvg}<p class="empty-title">${title}</p><p class="empty-hint">${hint}</p></div>`;
+}
+function selectionBar(count, total, deleteAction, cancelAction, selectAllAction, singular, plural){
+  const noun = count === 1 ? singular : plural;
+  const allSelected = total > 0 && count === total;
+  return `<div class="selection-bar">
+    <div class="selection-bar-row">
+      <span class="small">${count} ${noun} selecionada${count===1?'':'s'} de ${total}</span>
+      <button class="btn-ghost small" type="button" data-action="${selectAllAction}">${allSelected ? 'Desmarcar tudo' : 'Selecionar tudo'}</button>
+    </div>
+    <div class="selection-bar-row">
+      <button class="btn-ghost" type="button" data-action="${cancelAction}">Cancelar</button>
+      <button class="btn-ghost" type="button" data-action="${deleteAction}" ${count===0?'disabled':''} style="color:#fff; background:var(--brick); border-color:var(--brick);">${ICONS.trash} Remover</button>
+    </div>
+  </div>`;
 }
 const ICONS = {
   wallet:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
@@ -961,7 +1102,7 @@ function renderCharts(){
     pieWrap.innerHTML = '<canvas id="pieChart"></canvas>';
     pieChart = new Chart(document.getElementById('pieChart'), {
       type:'doughnut',
-      data:{ labels: pieEntries.map(e=>e[0]), datasets:[{ data: pieEntries.map(e=>e[1]), backgroundColor: PIE_COLORS }] },
+      data:{ labels: pieEntries.map(e=>e[0]), datasets:[{ data: pieEntries.map(e=>e[1]), backgroundColor: pieEntries.map(e=>categoryColor(e[0])) }] },
       options:{ responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Inter', size:11 }, boxWidth:10 } },
           tooltip:{ callbacks:{ label:(ctx)=> ` ${ctx.label}: ${fmtBRL(ctx.raw)}` } } } }
@@ -985,22 +1126,37 @@ function renderAccounts(){
   const ativas = accounts.filter(a => a.ativo !== false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const inativas = accounts.filter(a => a.ativo === false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const sorted = [...ativas, ...inativas];
+  lastAccountsListIds = sorted.map(a => a.id);
+  const totalAtivas = ativas.reduce((s,a) => s + balanceOf(a.id), 0);
   const body = sorted.length ? `<div class="account-grid">${sorted.map((a, i) => {
     const ativa = a.ativo !== false;
+    const typeColor = accountTypeColor(a.tipo);
+    const sel = acctSelectMode && selectedAccounts.has(a.id);
     return `
-    <div class="account-card ${ativa ? (i % 2 === 0 ? 'zebra-a' : 'zebra-b') : 'inactive'}" data-action="open-account-statement" data-id="${a.id}">
+    <div class="account-card ${ativa ? (i % 2 === 0 ? 'zebra-a' : 'zebra-b') : 'inactive'} ${acctSelectMode ? 'select-mode' : ''} ${sel ? 'selected' : ''}" data-action="${acctSelectMode ? 'toggle-select-account' : 'open-account-statement'}" data-id="${a.id}" style="${ativa ? `border-left-color:${typeColor};` : ''}">
+      ${acctSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : `
       <button class="icon-btn danger" data-action="delete-account" data-id="${a.id}">${ICONS.trash}</button>
       <button class="icon-btn edit-acct" data-action="edit-account" data-id="${a.id}" title="Editar conta">${ICONS.pencil}</button>
-      <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>
-      <p class="muted small">${esc(a.banco)||'—'} · ${esc(a.tipo)} ${ativa ? '' : '· <span class="inactive-tag">Inativa</span>'}</p>
+      <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>`}
+      <p class="muted small"><span class="type-dot" style="background:${ativa ? typeColor : '#B7AF98'}"></span>${esc(a.banco)||'—'} · ${esc(a.tipo)} ${ativa ? '' : '· <span class="inactive-tag">Inativa</span>'}</p>
       <h3>${esc(a.nome)}</h3>
       <p class="account-balance" style="color:${balanceOf(a.id)<0?'#B3432B':'#1B4332'}">${fmtBRL(balanceOf(a.id))}</p>
     </div>`;
   }).join('')}</div>` : emptyState(ICONS.bank,'Nenhuma conta cadastrada','Cadastre suas contas bancárias para organizar seu dinheiro.');
 
+  const statsRow = sorted.length ? `<div class="accounts-stats">
+    <div><p class="muted small">Contas ativas</p><p class="stat-value">${ativas.length}</p></div>
+    <div><p class="muted small">Contas inativas</p><p class="stat-value muted">${inativas.length}</p></div>
+    <div><p class="muted small">Saldo (ativas)</p><p class="stat-value" style="color:${totalAtivas<0?'#B3432B':'#1B4332'}">${fmtBRL(totalAtivas)}</p></div>
+  </div>` : '';
+
   return `<div class="stack">
-    <div class="section-head"><h2>Contas bancárias</h2></div>
-    <p class="muted small" style="margin-top:-8px;">Toque em uma conta para ver o extrato de transações.</p>
+    <div class="section-head"><h2>Contas bancárias</h2>
+      ${sorted.length ? `<button class="btn-ghost" data-action="toggle-select-mode-accounts">${acctSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
+    </div>
+    <p class="muted small" style="margin-top:-8px;">${acctSelectMode ? 'Toque nas contas para selecionar.' : 'Toque em uma conta para ver o extrato de transações.'}</p>
+    ${acctSelectMode ? selectionBar(selectedAccounts.size, lastAccountsListIds.length, 'bulk-delete-accounts', 'toggle-select-mode-accounts', 'select-all-accounts', 'conta', 'contas') : ''}
+    ${statsRow}
     ${body}
   </div>`;
 }
@@ -1015,7 +1171,7 @@ function buildDailyBalanceMap(accountId){
   return map;
 }
 
-function renderDayGroupedLedger(accountId, items){
+function renderDayGroupedLedger(accountId, items, selectable){
   if(!items.length) return emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
   const sorted = [...items].sort((a,b) => a.data.localeCompare(b.data));
   const balMap = buildDailyBalanceMap(accountId);
@@ -1030,16 +1186,19 @@ function renderDayGroupedLedger(accountId, items){
   return `<div class="day-ledger">${days.map((d, i) => `
     <div class="day-block day-alt-${i % 2}">
       <p class="day-label">${fmtDate(d.date)}</p>
-      <ul class="ledger">${d.items.map(t => `
-        <li class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
-          <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+      <ul class="ledger">${d.items.map(t => {
+        const sel = selectable && txSelectMode && selectedTx.has(t.id);
+        return `
+        <li class="ledger-row clickable ${sel ? 'selected' : ''}" data-action="${selectable && txSelectMode ? 'toggle-select-tx' : 'edit-transaction'}" data-id="${t.id}">
+          ${selectable && txSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : `<button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>`}
           <span class="dot ${t.tipo}"></span>
           <div class="ledger-main">
             <p class="ledger-desc">${esc(t.descricao)}</p>
             <p class="muted small">${esc(t.categoria)}</p>
           </div>
           <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
-        </li>`).join('')}
+        </li>`;
+      }).join('')}
       </ul>
       <p class="day-balance">Saldo do dia <span class="${(balMap[d.date]||0) < 0 ? 'amount saida' : 'amount entrada'}">${fmtBRL(balMap[d.date]||0)}</span></p>
     </div>`).join('')}</div>`;
@@ -1108,6 +1267,10 @@ document.body.addEventListener('change', (e) => {
     txPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
     render();
   }
+  if(e.target.id === 'txYearOnlySelect'){
+    txPeriod = { mode:'year', year: parseInt(e.target.value,10) };
+    render();
+  }
 });
 
 /* =========================== transactions =========================== */
@@ -1131,8 +1294,9 @@ function renderDayGroupedLedgerMulti(items){
       <p class="day-label">${fmtDate(d.date)}</p>
       <ul class="ledger">${d.items.map(t => {
         const accName = (accounts.find(a => a.id === t.contaId) || {}).nome || 'Sem conta';
-        return `<li class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
-          <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+        const sel = txSelectMode && selectedTx.has(t.id);
+        return `<li class="ledger-row clickable ${sel ? 'selected' : ''}" data-action="${txSelectMode ? 'toggle-select-tx' : 'edit-transaction'}" data-id="${t.id}">
+          ${txSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : `<button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>`}
           <span class="dot ${t.tipo}"></span>
           <div class="ledger-main">
             <p class="ledger-desc">${esc(t.descricao)}</p>
@@ -1169,47 +1333,70 @@ function renderTransactions(){
     ${inativos.length ? `<div class="acct-sidebar-divider"></div>${inativos.map(sidebarItem).join('')}` : ''}
   </aside>` : '';
 
-  // filtro de período: últimos 7 dias (padrão) ou mês/ano selecionado
+  // filtro de período: últimos 7 dias (padrão), mês inteiro ou ano inteiro
   const years = txAvailableYears();
   const now = new Date();
-  const selMonth = txPeriod.mode === 'month' ? txPeriod.month : now.getMonth()+1;
-  const selYear = txPeriod.mode === 'month' ? txPeriod.year : now.getFullYear();
+  const selMonth = txPeriod.mode === 'month' ? (txPeriod.month || now.getMonth()+1) : now.getMonth()+1;
+  const selYear = (txPeriod.mode === 'month' || txPeriod.mode === 'year') ? (txPeriod.year || now.getFullYear()) : now.getFullYear();
 
   const periodControls = `
     <div class="period-row">
       <button class="chip ${txPeriod.mode==='recent'?'active':''}" data-action="set-period-recent">Últimos 7 dias</button>
+      <button class="chip ${txPeriod.mode==='month'?'active':''}" data-action="set-period-month">Mês</button>
+      <button class="chip ${txPeriod.mode==='year'?'active':''}" data-action="set-period-year">Ano</button>
+    </div>
+    ${txPeriod.mode==='month' ? `<div class="period-row">
       <select id="txMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
       <select id="txYearSelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
-    </div>`;
+    </div>` : ''}
+    ${txPeriod.mode==='year' ? `<div class="period-row">
+      <select id="txYearOnlySelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
+    </div>` : ''}`;
 
-  const tipoFilters = `<div class="filter-row">${['todos','entrada','saida'].map(f => `
+  const tipoFilters = `<div class="filter-row">
+    ${['todos','entrada','saida'].map(f => `
     <button class="chip ${filterTipo===f?'active':''}" data-action="filter-transactions" data-value="${f}">
       ${f==='todos'?'Todas':f==='entrada'?'Entradas':'Saídas'}
-    </button>`).join('')}</div>`;
+    </button>`).join('')}
+    <button class="chip chip-warn ${filterConsolidado==='pendentes'?'active':''}" data-action="toggle-filter-consolidado">Não consolidadas</button>
+  </div>`;
 
-  // aplica filtros: conta > tipo > período
+  // aplica filtros: conta > tipo > consolidado > período
   let filtered = transactions.filter(t => filterTipo==='todos' || t.tipo===filterTipo);
   if(txFilterAccountId) filtered = filtered.filter(t => t.contaId === txFilterAccountId);
+  if(filterConsolidado === 'pendentes') filtered = filtered.filter(t => !t.consolidado);
   if(txPeriod.mode === 'recent'){
     const start = last7DaysStart();
     filtered = filtered.filter(t => t.data >= start && t.data <= todayStr());
+  } else if(txPeriod.mode === 'year'){
+    const y = String(selYear);
+    filtered = filtered.filter(t => t.data.slice(0,4) === y);
   } else {
-    const key = `${txPeriod.year}-${String(txPeriod.month).padStart(2,'0')}`;
+    const key = `${selYear}-${String(selMonth).padStart(2,'0')}`;
     filtered = filtered.filter(t => t.data.slice(0,7) === key);
   }
 
-  const periodLabel = txPeriod.mode === 'recent' ? 'nos últimos 7 dias' : `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
+  const periodLabel = txPeriod.mode === 'recent' ? 'nos últimos 7 dias'
+    : txPeriod.mode === 'year' ? `em ${selYear}`
+    : `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
+  const emptyExtra = `${txFilterAccountId ? ' nesta conta' : ''}${filterConsolidado==='pendentes' ? ' não consolidadas' : ''}`;
+  lastTxFilteredIds = filtered.map(t => t.id);
   const ledgerHtml = filtered.length
-    ? (txFilterAccountId ? renderDayGroupedLedger(txFilterAccountId, filtered) : renderDayGroupedLedgerMulti(filtered))
-    : emptyState(ICONS.empty1, 'Nenhuma transação', `Sem lançamentos ${periodLabel}${txFilterAccountId ? ' nesta conta' : ''}.`);
+    ? (txFilterAccountId ? renderDayGroupedLedger(txFilterAccountId, filtered, true) : renderDayGroupedLedgerMulti(filtered))
+    : emptyState(ICONS.empty1, 'Nenhuma transação', `Sem lançamentos ${periodLabel}${emptyExtra}.`);
 
   return `<div class="tx-layout">
     ${sidebar}
     <div class="tx-main">
-      <div class="section-head"><h2>Transações</h2></div>
+      <div class="section-head"><h2>Transações</h2>
+        ${filtered.length ? `<button class="btn-ghost" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
+      </div>
       ${warn}
-      ${periodControls}
-      ${tipoFilters}
+      <div class="filters-panel">
+        ${periodControls}
+        ${tipoFilters}
+      </div>
+      ${txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : ''}
       ${ledgerHtml}
     </div>
   </div>`;
@@ -1219,6 +1406,7 @@ function renderTransactions(){
 function renderBills(){
   const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
     .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
+  lastBillsListIds = list.map(b => b.id);
 
   const notifSupported = notificationsSupported();
   const notifPerm = notifSupported ? Notification.permission : 'unsupported';
@@ -1236,8 +1424,9 @@ function renderBills(){
 
   const body = list.length ? `<ul class="reminder-list">${list.map(b => {
     const status = billStatus(b); const [label,color] = stampLabel(status); const d = daysUntil(b.vencimento);
-    return `<li class="reminder-row">
-      ${status==='vencido' ? ICONS.warn : ''}
+    const sel = billSelectMode && selectedBills.has(b.id);
+    return `<li class="reminder-row ${billSelectMode ? 'select-mode' : ''} ${sel ? 'selected' : ''}" data-action="${billSelectMode ? 'toggle-select-bill' : ''}" data-id="${b.id}">
+      ${billSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : (status==='vencido' ? ICONS.warn : '')}
       <div style="flex:1">
         <p class="reminder-desc">${esc(b.descricao)} ${b.recorrente ? '<span class="muted small">(recorrente)</span>' : ''}</p>
         <p class="muted small">vence ${fmtDate(b.vencimento)} · ${esc(b.categoria)}
@@ -1247,8 +1436,9 @@ function renderBills(){
       <div class="reminder-right">
         <span class="amount">${fmtBRL(b.valor)}</span>
         <span class="stamp" style="border-color:${color};color:${color}">${label}</span>
+        ${!billSelectMode ? `
         ${!b.pago ? `<button class="btn-ghost" data-action="mark-paid" data-id="${b.id}">Marcar paga</button>` : ''}
-        <button class="icon-btn danger" data-action="delete-bill" data-id="${b.id}">${ICONS.trash}</button>
+        <button class="icon-btn danger" data-action="delete-bill" data-id="${b.id}">${ICONS.trash}</button>` : ''}
       </div>
     </li>`;
   }).join('')}</ul>` : emptyState(ICONS.receipt,'Nada por aqui','Cadastre contas a pagar para acompanhar vencimentos.');
@@ -1270,7 +1460,10 @@ function renderBills(){
     </div>`;
 
   return `<div class="stack">
-    <div class="section-head"><h2>Contas a pagar</h2></div>
+    <div class="section-head"><h2>Contas a pagar</h2>
+      ${list.length ? `<button class="btn-ghost" data-action="toggle-select-mode-bills">${billSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
+    </div>
+    ${billSelectMode ? selectionBar(selectedBills.size, lastBillsListIds.length, 'bulk-delete-bills', 'toggle-select-mode-bills', 'select-all-bills', 'conta', 'contas') : ''}
     ${notifHtml}
     ${filters}
     ${body}
@@ -1642,7 +1835,13 @@ document.body.addEventListener('submit', (e) => {
 /* =========================== delegated actions =========================== */
 document.body.addEventListener('click', (e) => {
   const navBtn = e.target.closest('.nav-btn');
-  if(navBtn){ activeTab = navBtn.dataset.tab; render(); return; }
+  if(navBtn){
+    activeTab = navBtn.dataset.tab;
+    acctSelectMode = false; selectedAccounts.clear();
+    txSelectMode = false; selectedTx.clear();
+    billSelectMode = false; selectedBills.clear();
+    render(); return;
+  }
 
   if(e.target.id === 'fab' || e.target.closest('#fab')){
     if(activeTab==='accounts') openAccountForm();
@@ -1700,9 +1899,92 @@ document.body.addEventListener('click', (e) => {
     }
     render();
   }
+
+  /* ---- seleção múltipla: contas ---- */
+  if(action === 'toggle-select-mode-accounts'){ acctSelectMode = !acctSelectMode; selectedAccounts.clear(); render(); }
+  if(action === 'toggle-select-account'){
+    const id = btn.dataset.id;
+    if(selectedAccounts.has(id)) selectedAccounts.delete(id); else selectedAccounts.add(id);
+    render();
+  }
+  if(action === 'select-all-accounts'){
+    if(selectedAccounts.size === lastAccountsListIds.length) selectedAccounts.clear();
+    else lastAccountsListIds.forEach(id => selectedAccounts.add(id));
+    render();
+  }
+  if(action === 'bulk-delete-accounts'){
+    if(selectedAccounts.size === 0) return;
+    const ids = [...selectedAccounts];
+    const ok = confirm(`Tem certeza que deseja excluir ${ids.length} conta(s)? Todas as transações delas também serão apagadas. Essa ação não pode ser desfeita.`);
+    if(ok){
+      const idsToRemoveTx = transactions.filter(t => ids.includes(t.contaId)).map(t => t.id);
+      accounts = accounts.filter(a => !ids.includes(a.id));
+      transactions = transactions.filter(t => !ids.includes(t.contaId));
+      ids.forEach(id => fsDeleteDoc('accounts', id));
+      fsBatchDelete('transactions', idsToRemoveTx);
+      acctSelectMode = false; selectedAccounts.clear();
+      render();
+    }
+  }
+
+  /* ---- seleção múltipla: transações ---- */
+  if(action === 'toggle-select-mode-tx'){ txSelectMode = !txSelectMode; selectedTx.clear(); render(); }
+  if(action === 'toggle-select-tx'){
+    const id = btn.dataset.id;
+    if(selectedTx.has(id)) selectedTx.delete(id); else selectedTx.add(id);
+    render();
+  }
+  if(action === 'select-all-tx'){
+    if(selectedTx.size === lastTxFilteredIds.length) selectedTx.clear();
+    else lastTxFilteredIds.forEach(id => selectedTx.add(id));
+    render();
+  }
+  if(action === 'bulk-delete-tx'){
+    if(selectedTx.size === 0) return;
+    const ids = new Set(selectedTx);
+    transactions.forEach(t => {
+      if(ids.has(t.id) && t.transferId) transactions.forEach(x => { if(x.transferId === t.transferId) ids.add(x.id); });
+    });
+    const idsArr = [...ids];
+    const extra = idsArr.length !== selectedTx.size ? ' (inclui as duas pontas de transferências selecionadas)' : '';
+    const ok = confirm(`Tem certeza que deseja excluir ${idsArr.length} transação(ões)${extra}? Essa ação não pode ser desfeita.`);
+    if(ok){
+      transactions = transactions.filter(t => !ids.has(t.id));
+      fsBatchDelete('transactions', idsArr);
+      txSelectMode = false; selectedTx.clear();
+      render();
+    }
+  }
+
+  /* ---- seleção múltipla: contas a pagar ---- */
+  if(action === 'toggle-select-mode-bills'){ billSelectMode = !billSelectMode; selectedBills.clear(); render(); }
+  if(action === 'toggle-select-bill'){
+    const id = btn.dataset.id;
+    if(selectedBills.has(id)) selectedBills.delete(id); else selectedBills.add(id);
+    render();
+  }
+  if(action === 'select-all-bills'){
+    if(selectedBills.size === lastBillsListIds.length) selectedBills.clear();
+    else lastBillsListIds.forEach(id => selectedBills.add(id));
+    render();
+  }
+  if(action === 'bulk-delete-bills'){
+    if(selectedBills.size === 0) return;
+    const ids = [...selectedBills];
+    const ok = confirm(`Tem certeza que deseja excluir ${ids.length} conta(s) a pagar? Essa ação não pode ser desfeita.`);
+    if(ok){
+      bills = bills.filter(b => !ids.includes(b.id));
+      fsBatchDelete('bills', ids);
+      billSelectMode = false; selectedBills.clear();
+      render();
+    }
+  }
   if(action === 'filter-transactions'){ filterTipo = btn.dataset.value; render(); }
+  if(action === 'toggle-filter-consolidado'){ filterConsolidado = filterConsolidado === 'pendentes' ? 'todos' : 'pendentes'; render(); }
   if(action === 'filter-account'){ txFilterAccountId = btn.dataset.id || null; render(); }
   if(action === 'set-period-recent'){ txPeriod = { mode:'recent' }; render(); }
+  if(action === 'set-period-month'){ const n = new Date(); txPeriod = { mode:'month', month: txPeriod.month || n.getMonth()+1, year: txPeriod.year || n.getFullYear() }; render(); }
+  if(action === 'set-period-year'){ const n = new Date(); txPeriod = { mode:'year', year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
   if(action === 'toggle-tx-group'){
     const id = btn.dataset.id;
@@ -1997,13 +2279,23 @@ document.body.addEventListener('click', (e) => {
 });
 
 /* =========================== init =========================== */
+function hideLoadingScreen(){
+  const ls = document.getElementById('loadingScreen');
+  if(ls) ls.classList.add('hide');
+}
+const appLoadStart = Date.now();
+const MIN_LOADING_MS = 550;
 loadInitialState().then(async () => {
   render();
   initFirebase();
   await loadNotifiedSlots();
   checkBillReminders();
   setInterval(checkBillReminders, 15 * 60 * 1000);
-});
+  const elapsed = Date.now() - appLoadStart;
+  setTimeout(hideLoadingScreen, Math.max(0, MIN_LOADING_MS - elapsed));
+}).catch(() => { hideLoadingScreen(); });
+// segurança: nunca deixa a animação presa na tela, mesmo se algo falhar
+setTimeout(hideLoadingScreen, 6000);
 
 /* =========================== PWA: service worker + install prompt =========================== */
 if ("serviceWorker" in navigator) {
