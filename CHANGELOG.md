@@ -3,6 +3,13 @@
 Todas as mudanças relevantes do app são registradas aqui, por versão.
 O número da versão também aparece dentro do app (topo da tela) e no menu "Dados do app" (ícone ⬇).
 
+## [1.19.0] — 2026-08-09
+- Confirmação "Deseja confirmar essa alteração?" em toda ação que grava ou muda dados (contas, transações, contas a pagar, ativar/inativar, marcar como paga)
+- Corrigido: mudanças feitas nos primeiros segundos após abrir o app podiam não ser enviadas para a nuvem — agora toda escrita espera a conexão terminar de se estabelecer
+- Corrigido: gráficos podiam ficar travados em "indisponíveis" mesmo com tudo certo (condição de corrida no carregamento) — agora tenta de novo automaticamente, com botão "Tentar novamente"
+- Corrigido: notificações de vencimento agora usam o método correto para aparecer no celular (Android); botão "Testar notificação agora" adicionado para conferir
+- Transações de dias diferentes agora aparecem com tons de azul claro alternados, para facilitar a leitura
+
 ## [1.18.0] — 2026-08-09
 - Importar um arquivo .json agora também envia os dados para a nuvem automaticamente (quando conectado), mantendo todos os aparelhos iguais
 - Coluna de contas na aba Transações agora mostra a lista inteira, sem cortar com rolagem interna

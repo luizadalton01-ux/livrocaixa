@@ -16,18 +16,21 @@
   // Carrega o Chart.js com CDNs alternativos de backup — se todos falharem
   // (ex: sem internet), o app avisa o script principal e segue sem travar.
   window.chartJsReady = false;
-  (function loadChartJs(sources, i){
-    if (i >= sources.length) { window.dispatchEvent(new Event('chartjs-unavailable')); return; }
-    var s = document.createElement('script');
-    s.src = sources[i];
-    s.onload = function(){ window.chartJsReady = true; window.dispatchEvent(new Event('chartjs-ready')); };
-    s.onerror = function(){ loadChartJs(sources, i + 1); };
-    document.head.appendChild(s);
-  })([
+  window.chartJsFailed = false;
+  window.chartJsSources = [
     'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
     'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
     'https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js'
-  ]);
+  ];
+  window.loadChartJs = function(sources, i){
+    if (i >= sources.length) { window.chartJsFailed = true; window.dispatchEvent(new Event('chartjs-unavailable')); return; }
+    var s = document.createElement('script');
+    s.src = sources[i];
+    s.onload = function(){ window.chartJsReady = true; window.chartJsFailed = false; window.dispatchEvent(new Event('chartjs-ready')); };
+    s.onerror = function(){ window.loadChartJs(sources, i + 1); };
+    document.head.appendChild(s);
+  };
+  window.loadChartJs(window.chartJsSources, 0);
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
@@ -137,10 +140,13 @@
   .ledger-main{ flex:1; min-width:0; }
   .ledger-desc{ margin:0; font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  .day-ledger{ display:flex; flex-direction:column; gap:14px; }
-  .day-block{ }
+  .day-ledger{ display:flex; flex-direction:column; gap:10px; }
+  .day-block{ border-radius:10px; padding:8px 10px; }
+  .day-block.day-alt-0{ background:#EAF3FB; }
+  .day-block.day-alt-1{ background:#D8E9F7; }
+  .day-block .ledger-row{ border-bottom-color:rgba(22,35,58,0.08); }
   .day-label{ margin:0 0 2px 0; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:0.3px; text-transform:uppercase; }
-  .day-balance{ margin:6px 0 0 0; font-size:11.5px; color:var(--muted); text-align:right; padding-top:6px; border-top:1px dashed var(--line); }
+  .day-balance{ margin:6px 0 0 0; font-size:11.5px; color:var(--muted); text-align:right; padding-top:6px; border-top:1px dashed rgba(22,35,58,0.15); }
   .day-balance .amount{ font-size:12px; }
 
   .tx-groups{ display:flex; flex-direction:column; gap:8px; }
@@ -308,8 +314,15 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 const CHANGELOG = [
+  { v: '1.19.0', data: '2026-08-09', mudancas: [
+    'Confirmação "Deseja confirmar essa alteração?" em toda ação que grava ou muda dados (contas, transações, contas a pagar, ativar/inativar, marcar como paga)',
+    'Corrigido: mudanças feitas nos primeiros segundos após abrir o app podiam não ser enviadas para a nuvem — agora toda escrita espera a conexão terminar de se estabelecer',
+    'Corrigido: gráficos podiam ficar travados em "indisponíveis" mesmo com tudo certo (condição de corrida no carregamento) — agora tenta de novo automaticamente, com botão "Tentar novamente"',
+    'Corrigido: notificações de vencimento agora usam o método correto para aparecer no celular (Android); botão "Testar notificação agora" adicionado para conferir',
+    'Transações de dias diferentes agora aparecem com tons de azul claro alternados, para facilitar a leitura',
+  ]},
   { v: '1.18.0', data: '2026-08-09', mudancas: [
     'Importar um arquivo .json agora também envia os dados para a nuvem automaticamente (quando conectado), mantendo todos os aparelhos iguais',
     'Coluna de contas na aba Transações agora mostra a lista inteira, sem cortar com rolagem interna',
@@ -515,30 +528,41 @@ function updateSyncBadge(){
   else el.textContent = '';
 }
 
+let fbInitPromise = null;
 async function initFirebase(){
   fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
   fbUnsubscribers = [];
   fbReady = false;
   fbError = false;
-  const config = await loadFirebaseConfig();
-  if(!config || !config.apiKey || typeof firebase === 'undefined'){ updateSyncBadge(); return; }
-  fbConnecting = true;
-  updateSyncBadge();
-  try{
-    fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
-    fbDb = firebase.firestore();
-    await firebase.auth().signInAnonymously();
-    fbReady = true;
-    fbConnecting = false;
-    attachFirestoreListeners();
+  fbInitPromise = (async () => {
+    const config = await loadFirebaseConfig();
+    if(!config || !config.apiKey || typeof firebase === 'undefined'){ updateSyncBadge(); return; }
+    fbConnecting = true;
     updateSyncBadge();
-  } catch(e){
-    console.warn('Falha ao iniciar Firebase:', e);
-    fbReady = false;
-    fbConnecting = false;
-    fbError = true;
-    updateSyncBadge();
-  }
+    try{
+      fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
+      fbDb = firebase.firestore();
+      await firebase.auth().signInAnonymously();
+      fbReady = true;
+      fbConnecting = false;
+      attachFirestoreListeners();
+      updateSyncBadge();
+    } catch(e){
+      console.warn('Falha ao iniciar Firebase:', e);
+      fbReady = false;
+      fbConnecting = false;
+      fbError = true;
+      updateSyncBadge();
+    }
+  })();
+  await fbInitPromise;
+}
+
+// Toda operação de escrita passa por aqui primeiro: se uma conexão está em andamento
+// (ex: acabou de abrir o app), espera ela terminar antes de decidir se envia ou não.
+// Isso evita perder alterações feitas nos primeiros segundos após abrir o app.
+async function ensureFbSettled(){
+  if(fbInitPromise) { try { await fbInitPromise; } catch(e){} }
 }
 
 function applyDocChanges(collectionKey, arrRef, changes){
@@ -573,16 +597,19 @@ function attachFirestoreListeners(){
 }
 
 async function fsSetDoc(collectionName, doc){
+  await ensureFbSettled();
   if(!fbReady) return;
   try { await fbDb.collection(collectionName).doc(doc.id).set(doc); }
   catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
+  await ensureFbSettled();
   if(!fbReady) return;
   try { await fbDb.collection(collectionName).doc(id).delete(); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsBatchSet(collectionName, docs, onChunk){
+  await ensureFbSettled();
   if(!fbReady || !docs.length) return { ok: 0, fail: 0 };
   const CHUNK = 400;
   let ok = 0, fail = 0;
@@ -598,6 +625,7 @@ async function fsBatchSet(collectionName, docs, onChunk){
   return { ok, fail };
 }
 async function fsBatchDelete(collectionName, ids){
+  await ensureFbSettled();
   if(!fbReady || !ids.length) return;
   const CHUNK = 400;
   for(let i = 0; i < ids.length; i += CHUNK){
@@ -607,6 +635,7 @@ async function fsBatchDelete(collectionName, ids){
   }
 }
 async function fsCollectionCount(collectionName){
+  await ensureFbSettled();
   if(!fbReady) return null;
   try {
     if(fbDb.collection(collectionName).count){
@@ -689,13 +718,17 @@ async function requestNotificationPermission(){
 async function fireBillNotification(bill, days){
   const title = days === 1 ? 'Conta vence amanhã' : 'Conta vence hoje';
   const body = `${bill.descricao} — ${fmtBRL(bill.valor)}`;
-  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: `bill-${bill.id}-${todayStr()}`, renotify: true };
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: `bill-${bill.id}-${todayStr()}`, renotify: true, vibrate: [200,100,200] };
   try {
     if('serviceWorker' in navigator){
-      const reg = await navigator.serviceWorker.getRegistration();
-      if(reg){ await reg.showNotification(title, opts); return; }
+      // navigator.serviceWorker.ready espera até existir um service worker ATIVO — no Android,
+      // usar o construtor "new Notification()" direto costuma ser bloqueado (é preciso passar
+      // pelo service worker), então isso é essencial para as notificações aparecerem.
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, opts);
+      return;
     }
-    new Notification(title, opts);
+    if(typeof Notification !== 'undefined') new Notification(title, opts);
   } catch(e){ console.warn('Falha ao mostrar notificação', e); }
 }
 
@@ -756,6 +789,7 @@ document.body.addEventListener('input', (e) => {
   if(e.target.classList && e.target.classList.contains('currency-input')) maskCurrencyInput(e);
 });
 
+const CONFIRM_MSG = 'Deseja confirmar essa alteração?';
 const RECURRENCE_MONTHS = { mes:1, trimestre:3, quadrimestre:4, semestre:6, ano:12 };
 function addDays(dateStr, n){
   const d = new Date(dateStr + 'T00:00:00');
@@ -876,8 +910,18 @@ function renderDashboard(){
   </div>`;
 }
 
+let chartRetryCount = 0;
 function renderCharts(){
-  if (typeof Chart === 'undefined') { renderChartsFallback(); return; }
+  if (typeof Chart === 'undefined') {
+    if (window.chartJsFailed) { renderChartsFallback(); return; }
+    // Ainda carregando: tenta de novo em instantes em vez de depender só do aviso
+    // "chartjs-ready" (que pode disparar antes do app terminar de configurar quem o escuta).
+    chartRetryCount++;
+    if (chartRetryCount > 20) { renderChartsFallback(); return; }
+    setTimeout(() => { if (activeTab === 'dashboard') renderCharts(); }, 300);
+    return;
+  }
+  chartRetryCount = 0;
   const now = new Date();
   const map = {};
   for(let i=5;i>=0;i--){
@@ -928,7 +972,8 @@ function renderCharts(){
 }
 
 function renderChartsFallback(){
-  const msg = emptyState(ICONS.receipt, 'Gráficos indisponíveis', 'Não foi possível carregar os gráficos agora (verifique sua conexão). Seus dados continuam salvos normalmente.');
+  const msg = emptyState(ICONS.receipt, 'Gráficos indisponíveis', 'Não foi possível carregar os gráficos agora (verifique sua conexão). Seus dados continuam salvos normalmente.')
+    + `<button class="btn-ghost small" data-action="retry-charts" style="display:block; margin:8px auto 0 auto;">Tentar novamente</button>`;
   const barWrap = document.getElementById('barChart');
   if (barWrap) barWrap.closest('.chart-wrap').outerHTML = msg;
   const pieWrap = document.getElementById('pieWrap');
@@ -982,8 +1027,8 @@ function renderDayGroupedLedger(accountId, items){
     day.items.push(t);
   });
 
-  return `<div class="day-ledger">${days.map(d => `
-    <div class="day-block">
+  return `<div class="day-ledger">${days.map((d, i) => `
+    <div class="day-block day-alt-${i % 2}">
       <p class="day-label">${fmtDate(d.date)}</p>
       <ul class="ledger">${d.items.map(t => `
         <li class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
@@ -1081,8 +1126,8 @@ function renderDayGroupedLedgerMulti(items){
     if(!day || day.date !== t.data){ day = { date: t.data, items: [] }; days.push(day); }
     day.items.push(t);
   });
-  return `<div class="day-ledger">${days.map(d => `
-    <div class="day-block">
+  return `<div class="day-ledger">${days.map((d, i) => `
+    <div class="day-block day-alt-${i % 2}">
       <p class="day-label">${fmtDate(d.date)}</p>
       <ul class="ledger">${d.items.map(t => {
         const accName = (accounts.find(a => a.id === t.contaId) || {}).nome || 'Sem conta';
@@ -1178,7 +1223,8 @@ function renderBills(){
   const notifSupported = notificationsSupported();
   const notifPerm = notifSupported ? Notification.permission : 'unsupported';
   const notifHtml = !notifSupported ? '' : notifPerm === 'granted'
-    ? `<p class="muted small notif-status">🔔 Notificações de vencimento ativadas (1 dia antes às 11h/15h, e no dia a cada 2h das 10h às 22h, até marcar como paga)</p>`
+    ? `<p class="muted small notif-status">🔔 Notificações de vencimento ativadas (1 dia antes às 11h/15h, e no dia a cada 2h das 10h às 22h, até marcar como paga)</p>
+       <button class="btn-ghost small" data-action="test-notification" style="margin-bottom:8px;">Testar notificação agora</button>`
     : notifPerm === 'denied'
     ? `<p class="muted small notif-status">🔕 Notificações bloqueadas nas configurações do navegador. Ative manualmente para receber avisos de vencimento.</p>`
     : `<button class="btn-ghost" data-action="enable-notifications" style="margin-bottom:2px;">🔔 Ativar notificações de vencimento</button>`;
@@ -1443,6 +1489,7 @@ function openEditTransactionForm(txId){
 document.body.addEventListener('submit', (e) => {
   if(e.target.id === 'editTransactionForm'){
     e.preventDefault();
+    if(!confirm(CONFIRM_MSG)) return;
     const f = new FormData(e.target);
     const id = e.target.dataset.id;
     const tipo = f.get('tipo');
@@ -1504,6 +1551,7 @@ function openBillForm(){
 document.body.addEventListener('submit', (e) => {
   if(e.target.id === 'accountForm'){
     e.preventDefault();
+    if(!confirm(CONFIRM_MSG)) return;
     const f = new FormData(e.target);
     const editId = e.target.dataset.id;
     if(editId){
@@ -1524,6 +1572,7 @@ document.body.addEventListener('submit', (e) => {
   }
   if(e.target.id === 'transactionForm'){
     e.preventDefault();
+    if(!confirm(CONFIRM_MSG)) return;
     const f = new FormData(e.target);
     const tipo = f.get('tipo');
     const contaId = f.get('contaId');
@@ -1580,6 +1629,7 @@ document.body.addEventListener('submit', (e) => {
   }
   if(e.target.id === 'billForm'){
     e.preventDefault();
+    if(!confirm(CONFIRM_MSG)) return;
     const f = new FormData(e.target);
     const novaConta = { id:uid(), descricao:f.get('descricao').trim(), valor:parseCurrencyBRL(f.get('valor')), vencimento:f.get('vencimento'),
       categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false };
@@ -1637,6 +1687,7 @@ document.body.addEventListener('click', (e) => {
     }
   }
   if(action === 'mark-paid'){
+    if(!confirm(CONFIRM_MSG)) return;
     const bill = bills.find(b => b.id === btn.dataset.id);
     if(bill){
       bill.pago = true; bill.dataPagamento = todayStr();
@@ -1665,6 +1716,7 @@ document.body.addEventListener('click', (e) => {
   }
 
   if(action === 'toggle-account-active'){
+    if(!confirm(CONFIRM_MSG)) return;
     const acc = accounts.find(a => a.id === btn.dataset.id);
     if(acc){
       acc.ativo = acc.ativo === false ? true : false;
@@ -1683,6 +1735,18 @@ document.body.addEventListener('click', (e) => {
       render();
     });
   }
+  if(action === 'test-notification'){
+    fireBillNotification({ id:'teste', descricao:'Notificação de teste do Livro-Caixa', valor:0 }, 0)
+      .then(() => alert('Se a notificação não apareceu em alguns segundos, confira se as notificações do navegador/app estão liberadas nas configurações do celular (fora do app).'));
+  }
+  if(action === 'retry-charts'){
+    chartRetryCount = 0;
+    if (typeof Chart === 'undefined' && window.chartJsFailed) {
+      window.chartJsFailed = false;
+      window.loadChartJs(window.chartJsSources, 0);
+    }
+    renderCharts();
+  }
   if(action === 'open-account-statement'){ openAccountStatement(btn.dataset.id); }
   if(action === 'edit-transaction'){ openEditTransactionForm(btn.dataset.id); }
   if(action === 'add-tx-to-account'){ openTransactionForm(btn.dataset.id); }
@@ -1690,10 +1754,10 @@ document.body.addEventListener('click', (e) => {
     const tx = transactions.find(x => x.id === btn.dataset.id);
     if(tx){
       const marcandoComoConsolidada = !tx.consolidado;
-      if(marcandoComoConsolidada){
-        const ok = confirm(`Confirma que esta transação já foi consolidada (efetivada no banco)?\n\n${tx.descricao} — ${fmtBRL(tx.valor)}`);
-        if(!ok) return;
-      }
+      const msg = marcandoComoConsolidada
+        ? `Confirma que esta transação já foi consolidada (efetivada no banco)?\n\n${tx.descricao} — ${fmtBRL(tx.valor)}`
+        : CONFIRM_MSG;
+      if(!confirm(msg)) return;
       tx.consolidado = marcandoComoConsolidada;
       fsSetDoc('transactions', tx);
     }

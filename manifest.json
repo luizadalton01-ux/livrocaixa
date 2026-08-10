@@ -2,7 +2,7 @@
   "name": "Livro-Caixa · Controle Financeiro",
   "short_name": "Livro-Caixa",
   "description": "Controle de entradas, saídas, contas bancárias e contas a pagar.",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
