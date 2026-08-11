@@ -616,6 +616,7 @@ function persist(){
   idbSet('accounts', accounts).catch(() => {});
   idbSet('transactions', transactions).catch(() => {});
   idbSet('bills', bills).catch(() => {});
+  syncAlarmsWithKodular();
 }
 
 function migrateData(){
@@ -908,6 +909,64 @@ function checkBillReminders(){
     });
   });
   if(changed) saveNotifiedSlots();
+}
+
+/* =========================== ponte de alarmes nativos (app Kodular) ===========================
+   Quando o app roda dentro do WebViewer do Kodular (window.Kodular existe), a API web de
+   Notification não funciona. Em vez de disparar notificações daqui, mandamos para o Kodular
+   uma lista do que precisa ser agendado (via AlarmExtension) e do que precisa ser cancelado.
+   O Kodular lê isso no evento WebViewStringChanged e usa os blocos ScheduleOnceInMinutes /
+   CancelAlarm. Cada slot de aviso vira um id numérico estável (hash), para poder ser
+   reagendado (sobrescrito) ou cancelado sem duplicar. */
+function runningInsideKodular(){ return typeof window.Kodular !== 'undefined'; }
+
+function stableIntHash(str){
+  let h = 0;
+  for(let i = 0; i < str.length; i++){ h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+  return Math.abs(h) || 1;
+}
+
+async function syncAlarmsWithKodular(){
+  if(!runningInsideKodular()) return;
+  const now = Date.now();
+  const desired = {}; // id -> {title, body, minutes}
+
+  bills.forEach(bill => {
+    if(bill.pago) return;
+    const [y, m, d] = bill.vencimento.split('-').map(Number);
+    const diaAntes = new Date(y, m - 1, d - 1);
+    const diaVenc = new Date(y, m - 1, d);
+    const body = `${bill.descricao} — ${fmtBRL(bill.valor)}`;
+
+    BILL_REMINDER_SLOTS_DIA_ANTES.forEach(h => {
+      const target = new Date(diaAntes); target.setHours(h, 0, 0, 0);
+      const ms = target.getTime() - now;
+      if(ms > 0){
+        const id = stableIntHash(`${bill.id}|antes|${h}`);
+        desired[id] = { title: 'Conta vence amanhã', body, minutes: Math.ceil(ms / 60000) };
+      }
+    });
+    BILL_REMINDER_SLOTS_VENCIMENTO.forEach(h => {
+      const target = new Date(diaVenc); target.setHours(h, 0, 0, 0);
+      const ms = target.getTime() - now;
+      if(ms > 0){
+        const id = stableIntHash(`${bill.id}|dia|${h}`);
+        desired[id] = { title: 'Conta vence hoje', body, minutes: Math.ceil(ms / 60000) };
+      }
+    });
+  });
+
+  let previous = [];
+  try { const stored = await idbGetAll(); previous = stored.kodularScheduledIds || []; } catch(e){ previous = []; }
+
+  const desiredIds = Object.keys(desired).map(Number);
+  const toCancel = previous.filter(id => !desiredIds.includes(id));
+  const toSchedule = desiredIds.map(id => ({ id, title: desired[id].title, body: desired[id].body, minutes: desired[id].minutes }));
+
+  const payload = JSON.stringify({ schedule: toSchedule, cancel: toCancel });
+  try { window.Kodular.setWebViewString(payload); } catch(e){}
+
+  try { await idbSet('kodularScheduledIds', desiredIds); } catch(e){}
 }
 
 /* =========================== helpers =========================== */
@@ -2389,6 +2448,7 @@ loadInitialState().then(async () => {
   await loadNotifiedSlots();
   checkBillReminders();
   setInterval(checkBillReminders, 15 * 60 * 1000);
+  syncAlarmsWithKodular();
   if(hasCloudConfig){
     showLoadingScreen('Sincronizando dados da nuvem…');
     await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
