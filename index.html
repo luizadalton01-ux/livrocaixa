@@ -926,6 +926,10 @@ function stableIntHash(str){
   return Math.abs(h) || 1;
 }
 
+function sanitizeForBridge(txt){
+  return String(txt).replace(/[~;|]/g, ' ');
+}
+
 async function syncAlarmsWithKodular(){
   if(!runningInsideKodular()) return;
   const now = Date.now();
@@ -936,7 +940,7 @@ async function syncAlarmsWithKodular(){
     const [y, m, d] = bill.vencimento.split('-').map(Number);
     const diaAntes = new Date(y, m - 1, d - 1);
     const diaVenc = new Date(y, m - 1, d);
-    const body = `${bill.descricao} — ${fmtBRL(bill.valor)}`;
+    const body = sanitizeForBridge(`${bill.descricao} — ${fmtBRL(bill.valor)}`);
 
     BILL_REMINDER_SLOTS_DIA_ANTES.forEach(h => {
       const target = new Date(diaAntes); target.setHours(h, 0, 0, 0);
@@ -961,9 +965,14 @@ async function syncAlarmsWithKodular(){
 
   const desiredIds = Object.keys(desired).map(Number);
   const toCancel = previous.filter(id => !desiredIds.includes(id));
-  const toSchedule = desiredIds.map(id => ({ id, title: desired[id].title, body: desired[id].body, minutes: desired[id].minutes }));
 
-  const payload = JSON.stringify({ schedule: toSchedule, cancel: toCancel });
+  // Formato: CANCEL:id1,id2|SCHEDULE:id~title~body~minutos;id~title~body~minutos
+  const cancelPart = 'CANCEL:' + toCancel.join(',');
+  const schedulePart = 'SCHEDULE:' + desiredIds
+    .map(id => `${id}~${desired[id].title}~${desired[id].body}~${desired[id].minutes}`)
+    .join(';');
+  const payload = `${cancelPart}|${schedulePart}`;
+
   try { window.Kodular.setWebViewString(payload); } catch(e){}
 
   try { await idbSet('kodularScheduledIds', desiredIds); } catch(e){}
