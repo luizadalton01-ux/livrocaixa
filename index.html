@@ -967,10 +967,13 @@ async function syncAlarmsWithKodular(){
   const toCancel = previous.filter(id => !desiredIds.includes(id));
 
   // Formato: CANCEL:id1,id2|SCHEDULE:id~title~body~minutos;id~title~body~minutos
-  const cancelPart = 'CANCEL:' + toCancel.join(',');
-  const schedulePart = 'SCHEDULE:' + desiredIds
+  // Usa "NONE" quando a lista está vazia, para evitar que o split do Kodular
+  // descarte o pedaço final vazio (comportamento do split em Java/Kodular).
+  const cancelPart = 'CANCEL:' + (toCancel.length ? toCancel.join(',') : 'NONE');
+  const scheduleList = desiredIds
     .map(id => `${id}~${desired[id].title}~${desired[id].body}~${desired[id].minutes}`)
     .join(';');
+  const schedulePart = 'SCHEDULE:' + (scheduleList ? scheduleList : 'NONE');
   const payload = `${cancelPart}|${schedulePart}`;
 
   try { window.Kodular.setWebViewString(payload); } catch(e){}
