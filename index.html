@@ -414,7 +414,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.28.0';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -852,7 +852,7 @@ async function syncAllToFirebase(onProgress){
 // exato — nesse caso, abrir o app brevemente já dispara os avisos pendentes.
 let notifiedSlots = {};
 const BILL_REMINDER_SLOTS_DIA_ANTES = [11, 15];
-const BILL_REMINDER_SLOTS_VENCIMENTO = [10, 12, 14, 16, 18, 20, 22];
+const BILL_REMINDER_SLOTS_VENCIMENTO = [10, 12, 14, 16, 18, 20, 22, 23]; // 23 = horário extra temporário p/ teste, remover depois
 
 async function loadNotifiedSlots(){
   try { const stored = await idbGetAll(); notifiedSlots = stored.notifiedSlots || {}; }
