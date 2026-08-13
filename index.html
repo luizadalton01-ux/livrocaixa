@@ -936,7 +936,11 @@ function sanitizeForBridge(txt){
 async function syncAlarmsWithKodular(){
   if(!runningInsideKodular()) return;
   const now = Date.now();
-  const desired = {}; // id -> {title, body, minutes}
+  const desired = {};      // id -> {title, body, minutes} — só os que ainda estão no futuro (serão (re)agendados)
+  const relevantIds = new Set(); // TODOS os ids de slots de contas ainda não pagas, passados ou futuros —
+                                  // usado só para decidir o que NÃO cancelar. Um slot cujo horário já passou
+                                  // continua "relevante" (o alarme pode estar prestes a disparar, atrasado
+                                  // pelo próprio Android) até a conta ser paga ou excluída.
 
   bills.forEach(bill => {
     if(bill.pago) return;
@@ -947,17 +951,19 @@ async function syncAlarmsWithKodular(){
 
     BILL_REMINDER_SLOTS_DIA_ANTES.forEach(h => {
       const target = new Date(diaAntes); target.setHours(h, 0, 0, 0);
+      const id = stableIntHash(`${bill.id}|antes|${h}`);
+      relevantIds.add(id);
       const ms = target.getTime() - now;
       if(ms > 0){
-        const id = stableIntHash(`${bill.id}|antes|${h}`);
         desired[id] = { title: 'Conta vence amanhã', body, minutes: Math.ceil(ms / 60000) };
       }
     });
     BILL_REMINDER_SLOTS_VENCIMENTO.forEach(h => {
       const target = new Date(diaVenc); target.setHours(h, 0, 0, 0);
+      const id = stableIntHash(`${bill.id}|dia|${h}`);
+      relevantIds.add(id);
       const ms = target.getTime() - now;
       if(ms > 0){
-        const id = stableIntHash(`${bill.id}|dia|${h}`);
         desired[id] = { title: 'Conta vence hoje', body, minutes: Math.ceil(ms / 60000) };
       }
     });
@@ -966,8 +972,11 @@ async function syncAlarmsWithKodular(){
   let previous = [];
   try { const stored = await idbGetAll(); previous = stored.kodularScheduledIds || []; } catch(e){ previous = []; }
 
+  // Só cancela um alarme se ele pertencia a uma conta que agora foi paga ou excluída
+  // (ou seja, não está mais em relevantIds). NUNCA cancela só porque o horário já passou —
+  // isso evita cancelar um alarme que o Android ainda não teve chance de disparar.
+  const toCancel = previous.filter(id => !relevantIds.has(id));
   const desiredIds = Object.keys(desired).map(Number);
-  const toCancel = previous.filter(id => !desiredIds.includes(id));
 
   // Formato: CANCEL:id1,id2|SCHEDULE:id~title~body~minutos;id~title~body~minutos
   // Usa "NONE" quando a lista está vazia, para evitar que o split do Kodular
@@ -981,7 +990,7 @@ async function syncAlarmsWithKodular(){
 
   try { window.Kodular.setWebViewString(payload); } catch(e){}
 
-  try { await idbSet('kodularScheduledIds', desiredIds); } catch(e){}
+  try { await idbSet('kodularScheduledIds', Array.from(relevantIds)); } catch(e){}
 }
 
 /* Botão de teste: dispara uma notificação de verdade em ~1 minuto, sem depender
