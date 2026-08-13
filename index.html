@@ -417,7 +417,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.28.3';
+const APP_VERSION = '1.29.0';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -955,34 +955,38 @@ async function syncAlarmsWithKodular(){
   if(!runningInsideKodular()) return;
   const now = Date.now();
   const desired = {};      // id -> {title, body, minutes} — só os que ainda estão no futuro (serão (re)agendados)
-  const relevantIds = new Set(); // TODOS os ids de slots de contas ainda não pagas, passados ou futuros —
+  const relevantIds = new Set(); // TODOS os ids de slots de itens pendentes, passados ou futuros —
                                   // usado só para decidir o que NÃO cancelar. Um slot cujo horário já passou
                                   // continua "relevante" (o alarme pode estar prestes a disparar, atrasado
-                                  // pelo próprio Android) até a conta ser paga ou excluída.
+                                  // pelo próprio Android) até o item ser pago/consolidado ou excluído.
 
-  bills.forEach(bill => {
-    if(bill.pago) return;
-    const [y, m, d] = bill.vencimento.split('-').map(Number);
+  // Usa a MESMA lista unificada que a Visão Geral usa pro card "Contas pendentes":
+  // contas a pagar (bills) + transações ainda não consolidadas. Antes essa função olhava
+  // só "bills", e por isso nunca agendava nada pra quem usa a aba Transações em vez da
+  // aba Contas.
+  pendingItemsUnified().forEach(item => {
+    const [y, m, d] = item.dueDate.split('-').map(Number);
     const diaAntes = new Date(y, m - 1, d - 1);
     const diaVenc = new Date(y, m - 1, d);
-    const body = sanitizeForBridge(`${bill.descricao} — ${fmtBRL(bill.valor)}`);
+    const body = sanitizeForBridge(`${item.descricao} — ${fmtBRL(item.valor)}`);
+    const itemKey = `${item.source}|${item.id}`;
 
     BILL_REMINDER_SLOTS_DIA_ANTES.forEach(h => {
       const target = new Date(diaAntes); target.setHours(h, 0, 0, 0);
-      const id = stableIntHash(`${bill.id}|antes|${h}`);
+      const id = stableIntHash(`${itemKey}|antes|${h}`);
       relevantIds.add(id);
       const ms = target.getTime() - now;
       if(ms > 0){
-        desired[id] = { title: 'Conta vence amanhã', body, minutes: Math.ceil(ms / 60000) };
+        desired[id] = { title: 'Vence amanhã', body, minutes: Math.ceil(ms / 60000) };
       }
     });
     getVencimentoSlotMinutes().forEach(minOfDay => {
       const target = new Date(diaVenc); target.setHours(0, 0, 0, 0); target.setMinutes(minOfDay);
-      const id = stableIntHash(`${bill.id}|dia|${minOfDay}`);
+      const id = stableIntHash(`${itemKey}|dia|${minOfDay}`);
       relevantIds.add(id);
       const ms = target.getTime() - now;
       if(ms > 0){
-        desired[id] = { title: 'Conta vence hoje', body, minutes: Math.ceil(ms / 60000) };
+        desired[id] = { title: 'Vence hoje', body, minutes: Math.ceil(ms / 60000) };
       }
     });
   });
@@ -1007,8 +1011,8 @@ async function syncAlarmsWithKodular(){
   // Segmento extra de diagnóstico (TEMPORÁRIO). O Kodular lê só os índices 1 e 2
   // depois do split por "|", então esse terceiro pedaço não atrapalha os blocos —
   // serve só pra aparecer no Label de debug e entendermos o que está acontecendo.
-  const unpaidCount = bills.filter(b => !b.pago).length;
-  const debugPart = `DEBUG:totalBills=${bills.length},naoPagas=${unpaidCount},agora=${new Date(now).toLocaleString('pt-BR')},kodular=${runningInsideKodular()}`;
+  const unpaidCount = pendingItemsUnified().length;
+  const debugPart = `DEBUG:pendentes=${unpaidCount},bills=${bills.length},tx=${transactions.length},agora=${new Date(now).toLocaleString('pt-BR')},kodular=${runningInsideKodular()}`;
   const payload = `${cancelPart}|${schedulePart}|${debugPart}`;
 
   try { window.Kodular.setWebViewString(payload); } catch(e){}
@@ -1038,10 +1042,11 @@ async function diagnosticoAlarmesAgora(){
     return;
   }
   await syncAlarmsWithKodular();
-  const unpaidCount = bills.filter(b => !b.pago).length;
+  const unpaidCount = pendingItemsUnified().length;
   alert(
-    `Total de contas carregadas: ${bills.length}\n` +
-    `Contas não pagas: ${unpaidCount}\n` +
+    `Contas a pagar cadastradas: ${bills.length}\n` +
+    `Transações não consolidadas: ${transactions.length}\n` +
+    `Total de itens pendentes (o que vira aviso): ${unpaidCount}\n` +
     `Horário do aparelho: ${new Date().toLocaleString('pt-BR')}\n\n` +
     `Confira o Label de debug (WebViewStringChange) para ver o payload completo enviado ao Kodular.`
   );
