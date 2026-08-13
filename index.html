@@ -373,6 +373,9 @@
       <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       </button>
+      <button id="testAlarmBtn" class="icon-topbtn" title="Testar notificação agora (1 min)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </button>
       <button id="installBtn" class="install-btn hidden">Instalar app</button>
     </div>
     <div class="balance-strip">
@@ -979,6 +982,19 @@ async function syncAlarmsWithKodular(){
   try { window.Kodular.setWebViewString(payload); } catch(e){}
 
   try { await idbSet('kodularScheduledIds', desiredIds); } catch(e){}
+}
+
+/* Botão de teste: dispara uma notificação de verdade em ~1 minuto, sem depender
+   de nenhuma conta cadastrada nem de horário de vencimento. Usa um id fixo
+   (999999) que nunca colide com os ids de hash das contas reais. */
+function testarNotificacaoAgora(){
+  if(!runningInsideKodular()){
+    alert('Isso só funciona dentro do app instalado (APK), não no navegador.');
+    return;
+  }
+  const payload = 'CANCEL:NONE|SCHEDULE:999999~Teste de notificação~Se você está vendo isso, funcionou!~1';
+  try { window.Kodular.setWebViewString(payload); } catch(e){}
+  alert('Notificação de teste agendada! Ela deve chegar em cerca de 1 minuto.');
 }
 
 /* =========================== helpers =========================== */
@@ -2386,6 +2402,7 @@ async function openDataSheet(){
 
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
+  if (e.target.id === 'testAlarmBtn' || e.target.closest('#testAlarmBtn')) { testarNotificacaoAgora(); return; }
 
   if (e.target.id === 'exportBtn') {
     const payload = JSON.stringify({ accounts, transactions, bills }, null, 0);
