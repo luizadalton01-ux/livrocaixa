@@ -417,7 +417,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.29.1';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -862,7 +862,7 @@ const BILL_REMINDER_SLOTS_VENCIMENTO = [10, 12, 14, 16, 18, 20, 22];
 // acima e gera um aviso a cada 5 minutos ao longo do dia, só pra testar se o
 // alarme sobrevive às sincronizações automáticas sem ser cancelado à toa.
 // IMPORTANTE: voltar para "false" depois do teste!
-const DEBUG_TEST_5MIN = true;
+const DEBUG_TEST_5MIN = false;
 function getVencimentoSlotMinutes(){
   if(DEBUG_TEST_5MIN){
     const arr = [];
@@ -998,7 +998,17 @@ async function syncAlarmsWithKodular(){
   // (ou seja, não está mais em relevantIds). NUNCA cancela só porque o horário já passou —
   // isso evita cancelar um alarme que o Android ainda não teve chance de disparar.
   const toCancel = previous.filter(id => !relevantIds.has(id));
-  const desiredIds = Object.keys(desired).map(Number);
+
+  // Limite de segurança: o Android permite no máximo 500 alarmes simultâneos por app.
+  // Se por acaso houver muitos itens pendentes (dezenas de transações não consolidadas,
+  // por exemplo), priorizamos agendar só os avisos mais PRÓXIMOS de acontecer, pra nunca
+  // estourar esse teto e travar o app.
+  const MAX_ALARMS_AGENDADOS = 400;
+  let desiredIds = Object.keys(desired).map(Number);
+  if(desiredIds.length > MAX_ALARMS_AGENDADOS){
+    desiredIds.sort((a, b) => desired[a].minutes - desired[b].minutes);
+    desiredIds = desiredIds.slice(0, MAX_ALARMS_AGENDADOS);
+  }
 
   // Formato: CANCEL:id1,id2|SCHEDULE:id~title~body~minutos;id~title~body~minutos
   // Usa "NONE" quando a lista está vazia, para evitar que o split do Kodular
