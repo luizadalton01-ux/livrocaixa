@@ -376,6 +376,9 @@
       <button id="testAlarmBtn" class="icon-topbtn" title="Testar notificação agora (1 min)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
       </button>
+      <button id="diagAlarmBtn" class="icon-topbtn" title="Diagnóstico de alarmes (forçar sincronização)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
       <button id="installBtn" class="install-btn hidden">Instalar app</button>
     </div>
     <div class="balance-strip">
@@ -414,7 +417,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.28.2';
+const APP_VERSION = '1.28.3';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -1001,7 +1004,12 @@ async function syncAlarmsWithKodular(){
     .map(id => `${id}~${desired[id].title}~${desired[id].body}~${desired[id].minutes}`)
     .join(';');
   const schedulePart = 'SCHEDULE:' + (scheduleList ? scheduleList : 'NONE');
-  const payload = `${cancelPart}|${schedulePart}`;
+  // Segmento extra de diagnóstico (TEMPORÁRIO). O Kodular lê só os índices 1 e 2
+  // depois do split por "|", então esse terceiro pedaço não atrapalha os blocos —
+  // serve só pra aparecer no Label de debug e entendermos o que está acontecendo.
+  const unpaidCount = bills.filter(b => !b.pago).length;
+  const debugPart = `DEBUG:totalBills=${bills.length},naoPagas=${unpaidCount},agora=${new Date(now).toLocaleString('pt-BR')},kodular=${runningInsideKodular()}`;
+  const payload = `${cancelPart}|${schedulePart}|${debugPart}`;
 
   try { window.Kodular.setWebViewString(payload); } catch(e){}
 
@@ -1019,6 +1027,24 @@ function testarNotificacaoAgora(){
   const payload = 'CANCEL:NONE|SCHEDULE:999999~Teste de notificação~Se você está vendo isso, funcionou!~1';
   try { window.Kodular.setWebViewString(payload); } catch(e){}
   alert('Notificação de teste agendada! Ela deve chegar em cerca de 1 minuto.');
+}
+
+/* Botão de diagnóstico: força uma sincronização real agora e mostra num alert() (não no
+   Label, pra não correr risco de ser sobrescrito) quantas contas o app está enxergando
+   neste exato momento e quantas ficariam pendentes de aviso. */
+async function diagnosticoAlarmesAgora(){
+  if(!runningInsideKodular()){
+    alert('Isso só funciona dentro do app instalado (APK), não no navegador.');
+    return;
+  }
+  await syncAlarmsWithKodular();
+  const unpaidCount = bills.filter(b => !b.pago).length;
+  alert(
+    `Total de contas carregadas: ${bills.length}\n` +
+    `Contas não pagas: ${unpaidCount}\n` +
+    `Horário do aparelho: ${new Date().toLocaleString('pt-BR')}\n\n` +
+    `Confira o Label de debug (WebViewStringChange) para ver o payload completo enviado ao Kodular.`
+  );
 }
 
 /* =========================== helpers =========================== */
@@ -2427,6 +2453,7 @@ async function openDataSheet(){
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
   if (e.target.id === 'testAlarmBtn' || e.target.closest('#testAlarmBtn')) { testarNotificacaoAgora(); return; }
+  if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { diagnosticoAlarmesAgora(); return; }
 
   if (e.target.id === 'exportBtn') {
     const payload = JSON.stringify({ accounts, transactions, bills }, null, 0);
