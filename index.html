@@ -414,7 +414,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.28.1';
+const APP_VERSION = '1.28.2';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -2501,11 +2501,11 @@ loadInitialState().then(async () => {
   await loadNotifiedSlots();
   checkBillReminders();
   setInterval(checkBillReminders, 15 * 60 * 1000);
-  syncAlarmsWithKodular();
   if(hasCloudConfig){
     showLoadingScreen('Sincronizando dados da nuvem…');
     await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
   }
+  syncAlarmsWithKodular();
   const elapsed = Date.now() - appLoadStart;
   setTimeout(hideLoadingScreen, Math.max(0, MIN_LOADING_MS - elapsed));
 }).catch(() => { hideLoadingScreen(); });
