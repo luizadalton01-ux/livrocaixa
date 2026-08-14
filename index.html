@@ -417,7 +417,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.29.1';
+const APP_VERSION = '1.29.2';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -1053,9 +1053,11 @@ async function diagnosticoAlarmesAgora(){
   }
   await syncAlarmsWithKodular();
   const unpaidCount = pendingItemsUnified().length;
+  const txNaoConsolidadas = transactions.filter(t => !t.consolidado && t.tipo !== 'transferencia').length;
   alert(
     `Contas a pagar cadastradas: ${bills.length}\n` +
-    `Transações não consolidadas: ${transactions.length}\n` +
+    `Transações no total: ${transactions.length}\n` +
+    `Transações não consolidadas: ${txNaoConsolidadas}\n` +
     `Total de itens pendentes (o que vira aviso): ${unpaidCount}\n` +
     `Horário do aparelho: ${new Date().toLocaleString('pt-BR')}\n\n` +
     `Confira o Label de debug (WebViewStringChange) para ver o payload completo enviado ao Kodular.`
