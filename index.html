@@ -373,10 +373,7 @@
       <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       </button>
-      <button id="testAlarmBtn" class="icon-topbtn" title="Testar notificação agora (1 min)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-      </button>
-      <button id="diagAlarmBtn" class="icon-topbtn" title="Diagnóstico de alarmes (forçar sincronização)">
+      <button id="diagAlarmBtn" class="icon-topbtn" title="Localizar transação">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </button>
       <button id="installBtn" class="install-btn hidden">Instalar app</button>
@@ -417,7 +414,7 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.29.2';
+const APP_VERSION = '1.30.0';
 const CHANGELOG = [
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
@@ -573,6 +570,7 @@ let filterTipo = 'todos';
 let filterConsolidado = 'todos';
 let acctSelectMode = false, selectedAccounts = new Set(), lastAccountsListIds = [];
 let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
+let longPressTimer = null, longPressTriggered = false;
 let billSelectMode = false, selectedBills = new Set(), lastBillsListIds = [];
 let filterBills = 'pendentes';
 let expandedGroups = new Set();
@@ -1033,37 +1031,6 @@ async function syncAlarmsWithKodular(){
 /* Botão de teste: dispara uma notificação de verdade em ~1 minuto, sem depender
    de nenhuma conta cadastrada nem de horário de vencimento. Usa um id fixo
    (999999) que nunca colide com os ids de hash das contas reais. */
-function testarNotificacaoAgora(){
-  if(!runningInsideKodular()){
-    alert('Isso só funciona dentro do app instalado (APK), não no navegador.');
-    return;
-  }
-  const payload = 'CANCEL:NONE|SCHEDULE:999999~Teste de notificação~Se você está vendo isso, funcionou!~1';
-  try { window.Kodular.setWebViewString(payload); } catch(e){}
-  alert('Notificação de teste agendada! Ela deve chegar em cerca de 1 minuto.');
-}
-
-/* Botão de diagnóstico: força uma sincronização real agora e mostra num alert() (não no
-   Label, pra não correr risco de ser sobrescrito) quantas contas o app está enxergando
-   neste exato momento e quantas ficariam pendentes de aviso. */
-async function diagnosticoAlarmesAgora(){
-  if(!runningInsideKodular()){
-    alert('Isso só funciona dentro do app instalado (APK), não no navegador.');
-    return;
-  }
-  await syncAlarmsWithKodular();
-  const unpaidCount = pendingItemsUnified().length;
-  const txNaoConsolidadas = transactions.filter(t => !t.consolidado && t.tipo !== 'transferencia').length;
-  alert(
-    `Contas a pagar cadastradas: ${bills.length}\n` +
-    `Transações no total: ${transactions.length}\n` +
-    `Transações não consolidadas: ${txNaoConsolidadas}\n` +
-    `Total de itens pendentes (o que vira aviso): ${unpaidCount}\n` +
-    `Horário do aparelho: ${new Date().toLocaleString('pt-BR')}\n\n` +
-    `Confira o Label de debug (WebViewStringChange) para ver o payload completo enviado ao Kodular.`
-  );
-}
-
 /* =========================== helpers =========================== */
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const todayStr = () => new Date().toISOString().slice(0,10);
@@ -1818,6 +1785,55 @@ function openTransactionForm(presetContaId){
 }
 
 /* =========================== editar / remover transação =========================== */
+function futureOccurrencesOf(t){
+  if(!t.recorrenciaId) return [];
+  return transactions.filter(x => x.recorrenciaId === t.recorrenciaId && x.data > t.data);
+}
+
+function doDeleteTransaction(t, includeFuture){
+  const idsToRemove = new Set();
+  const addWithTransferPair = (tx) => {
+    idsToRemove.add(tx.id);
+    if(tx.transferId){ transactions.forEach(x => { if(x.transferId === tx.transferId) idsToRemove.add(x.id); }); }
+  };
+  addWithTransferPair(t);
+  if(includeFuture){ futureOccurrencesOf(t).forEach(addWithTransferPair); }
+  const idsArr = [...idsToRemove];
+  transactions = transactions.filter(x => !idsToRemove.has(x.id));
+  fsBatchDelete('transactions', idsArr);
+}
+
+// Pede confirmação antes de excluir. Se a transação faz parte de uma série recorrente
+// com lançamentos futuros ainda pendentes, oferece a escolha entre excluir só esta
+// ocorrência ou esta e todas as futuras da mesma série. afterDelete() só é chamado
+// quando a exclusão realmente acontece (nunca em caso de cancelamento).
+function confirmDeleteTransaction(t, afterDelete){
+  const isTransfer = !!t.transferId;
+  const futures = futureOccurrencesOf(t);
+  if(futures.length === 0){
+    const msg = isTransfer
+      ? 'Esta transação faz parte de uma transferência entre contas. Tem certeza que deseja excluir? As DUAS pontas da transferência serão removidas. Essa ação não pode ser desfeita.'
+      : 'Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.';
+    if(!confirm(msg)) return;
+    doDeleteTransaction(t, false);
+    afterDelete();
+    return;
+  }
+  openModal(`
+    <p class="sheet-title">Excluir lançamento recorrente</p>
+    <p class="muted small">${esc(t.descricao)} — ${fmtBRL(t.valor)}${isTransfer ? ' (transferência)' : ''}</p>
+    <p class="muted small" style="margin-top:8px;">Esta transação faz parte de uma série recorrente e tem <strong>${futures.length}</strong> lançamento(s) futuro(s) ainda pendente(s). O que você deseja excluir?</p>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:14px;">
+      <button class="btn-primary" type="button" id="delOnlyThisBtn">Excluir só esta</button>
+      <button class="btn-ghost" type="button" id="delThisAndFutureBtn" style="color:var(--brick); border-color:var(--brick);">Excluir esta e as ${futures.length} futura(s)</button>
+      <button class="btn-ghost" type="button" id="delCancelChoiceBtn">Cancelar</button>
+    </div>`);
+  sheet.classList.add('sheet-compact');
+  document.getElementById('delOnlyThisBtn').addEventListener('click', () => { doDeleteTransaction(t, false); afterDelete(); });
+  document.getElementById('delThisAndFutureBtn').addEventListener('click', () => { doDeleteTransaction(t, true); afterDelete(); });
+  document.getElementById('delCancelChoiceBtn').addEventListener('click', () => { closeModal(); });
+}
+
 function openEditTransactionForm(txId){
   const t = transactions.find(x => x.id === txId);
   if(!t) return;
@@ -1895,23 +1911,7 @@ function openEditTransactionForm(txId){
   document.getElementById('cancelEditBtn').addEventListener('click', () => { closeModal(); });
 
   document.getElementById('deleteTxBtn').addEventListener('click', () => {
-    const isTransfer = !!t.transferId;
-    const msg = isTransfer
-      ? 'Esta transação faz parte de uma transferência entre contas. Tem certeza que deseja excluir? As DUAS pontas da transferência serão removidas. Essa ação não pode ser desfeita.'
-      : 'Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.';
-    const ok = confirm(msg);
-    if(ok){
-      if(isTransfer){
-        const idsToRemove = transactions.filter(x => x.transferId === t.transferId).map(x => x.id);
-        transactions = transactions.filter(x => x.transferId !== t.transferId);
-        fsBatchDelete('transactions', idsToRemove);
-      } else {
-        transactions = transactions.filter(x => x.id !== t.id);
-        fsDeleteDoc('transactions', t.id);
-      }
-      closeModal();
-      render();
-    }
+    confirmDeleteTransaction(t, () => { closeModal(); render(); });
   });
 }
 
@@ -2188,14 +2188,40 @@ document.body.addEventListener('click', (e) => {
     transactions.forEach(t => {
       if(ids.has(t.id) && t.transferId) transactions.forEach(x => { if(x.transferId === t.transferId) ids.add(x.id); });
     });
-    const idsArr = [...ids];
-    const extra = idsArr.length !== selectedTx.size ? ' (inclui as duas pontas de transferências selecionadas)' : '';
-    const ok = confirm(`Tem certeza que deseja excluir ${idsArr.length} transação(ões)${extra}? Essa ação não pode ser desfeita.`);
-    if(ok){
-      transactions = transactions.filter(t => !ids.has(t.id));
-      fsBatchDelete('transactions', idsArr);
-      txSelectMode = false; selectedTx.clear();
-      render();
+
+    // Detecta ocorrências futuras de séries recorrentes que ficaram de fora da seleção.
+    const futureExtra = new Set();
+    transactions.forEach(t => {
+      if(ids.has(t.id)) futureOccurrencesOf(t).forEach(f => { if(!ids.has(f.id)) futureExtra.add(f.id); });
+    });
+
+    const proceedWith = (finalIds) => {
+      const idsArr = [...finalIds];
+      const extra = idsArr.length !== selectedTx.size ? ' (inclui vínculos de transferência e/ou recorrência)' : '';
+      const ok = confirm(`Tem certeza que deseja excluir ${idsArr.length} transação(ões)${extra}? Essa ação não pode ser desfeita.`);
+      if(ok){
+        transactions = transactions.filter(t => !finalIds.has(t.id));
+        fsBatchDelete('transactions', idsArr);
+        txSelectMode = false; selectedTx.clear();
+        render();
+      }
+    };
+
+    if(futureExtra.size > 0){
+      openModal(`
+        <p class="sheet-title">Excluir também as futuras?</p>
+        <p class="muted small">${futureExtra.size} lançamento(s) futuro(s) da(s) mesma(s) série(s) recorrente(s) não foram selecionados. Deseja excluir eles também?</p>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:14px;">
+          <button class="btn-primary" type="button" id="bulkOnlySelectedBtn">Excluir só os selecionados</button>
+          <button class="btn-ghost" type="button" id="bulkWithFutureBtn" style="color:var(--brick); border-color:var(--brick);">Excluir selecionados + futuros</button>
+          <button class="btn-ghost" type="button" id="bulkCancelBtn">Cancelar</button>
+        </div>`);
+      sheet.classList.add('sheet-compact');
+      document.getElementById('bulkOnlySelectedBtn').addEventListener('click', () => { closeModal(); proceedWith(ids); });
+      document.getElementById('bulkWithFutureBtn').addEventListener('click', () => { closeModal(); futureExtra.forEach(id => ids.add(id)); proceedWith(ids); });
+      document.getElementById('bulkCancelBtn').addEventListener('click', () => { closeModal(); });
+    } else {
+      proceedWith(ids);
     }
   }
 
@@ -2294,6 +2320,34 @@ document.body.addEventListener('click', (e) => {
     }
   }
 });
+
+/* =========================== toque e segure para selecionar transação =========================== */
+// Funciona em qualquer lista que use data-action="edit-transaction" (extrato de conta,
+// aba Transações, busca): segurar por ~500ms entra no modo de seleção já com aquele
+// item marcado — igual a tocar em "Selecionar" e depois na transação, só que num gesto só.
+document.body.addEventListener('pointerdown', (e) => {
+  const row = e.target.closest('[data-action="edit-transaction"]');
+  if(!row) return;
+  longPressTriggered = false;
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    longPressTriggered = true;
+    txSelectMode = true;
+    selectedTx.add(row.dataset.id);
+    if(navigator.vibrate) { try { navigator.vibrate(25); } catch(e){} }
+    if(document.getElementById('stmtResults')) refreshStatementBody();
+    else render();
+  }, 500);
+});
+['pointerup','pointerleave','pointercancel','scroll'].forEach(evt => {
+  document.body.addEventListener(evt, () => clearTimeout(longPressTimer), true);
+});
+document.body.addEventListener('click', (e) => {
+  if(longPressTriggered && e.target.closest('[data-action="edit-transaction"]')){
+    e.preventDefault(); e.stopPropagation();
+    longPressTriggered = false;
+  }
+}, true);
 
 /* =========================== chart.js load listeners =========================== */
 window.addEventListener('chartjs-ready', () => { if (activeTab === 'dashboard') renderCharts(); });
@@ -2469,8 +2523,7 @@ async function openDataSheet(){
 
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
-  if (e.target.id === 'testAlarmBtn' || e.target.closest('#testAlarmBtn')) { testarNotificacaoAgora(); return; }
-  if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { diagnosticoAlarmesAgora(); return; }
+  if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
 
   if (e.target.id === 'exportBtn') {
     const payload = JSON.stringify({ accounts, transactions, bills }, null, 0);
