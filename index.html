@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.4';
+const APP_VERSION = '1.32.5';
 const CHANGELOG = [
+  { v: '1.32.5', data: '2026-08-14', mudancas: [
+    'Envio de contas/transações em lote agora roda vários lotes de 400 ao mesmo tempo (em vez de um por vez) — bem mais rápido em sincronizações grandes, especialmente com o "long polling" necessário dentro do WebViewer',
+  ]},
   { v: '1.32.4', data: '2026-08-14', mudancas: [
     'Corrigido: operações de envio ao Firestore podiam ficar penduradas para sempre dentro do WebViewer do Kodular (transporte de rede padrão falha silenciosamente em WebViews) — agora força "long polling" e cada operação tem seu próprio tempo-limite',
   ]},
@@ -894,22 +897,43 @@ async function fsDeleteDoc(collectionName, id){
   try { await withTimeout(fbDb.collection(collectionName).doc(id).delete(), 20000, 'timeout ao excluir'); unqueueDeletes(collectionName, [id]); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
+// Processa vários lotes de uma vez (em paralelo, com um limite), em vez de esperar um
+// terminar pra começar o próximo. Com "long polling" (necessário dentro do WebViewer do
+// Kodular pra não travar), cada lote sozinho é mais lento — rodar vários ao mesmo tempo
+// é o que compensa essa lentidão e acelera o envio de muitos registros de uma vez.
+async function runChunksConcurrently(chunks, worker, concurrency){
+  let ok = 0, fail = 0, doneCount = 0, nextIdx = 0;
+  const total = chunks.reduce((s,c) => s + c.length, 0);
+  async function runOne(){
+    while(nextIdx < chunks.length){
+      const idx = nextIdx++;
+      const r = await worker(chunks[idx]);
+      if(r.ok) ok += chunks[idx].length; else fail += chunks[idx].length;
+      doneCount += chunks[idx].length;
+      if(worker.onChunk) worker.onChunk(doneCount, total);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, runOne));
+  return { ok, fail };
+}
+
 async function fsBatchSet(collectionName, docs, onChunk){
   queueUpserts(collectionName, docs.map(d => d.id));
   await ensureFbSettled();
   if(!fbReady || !docs.length) return { ok: 0, fail: 0 };
   const CHUNK = 400;
-  let ok = 0, fail = 0;
-  for(let i = 0; i < docs.length; i += CHUNK){
-    const chunk = docs.slice(i, i + CHUNK);
+  const chunks = [];
+  for(let i = 0; i < docs.length; i += CHUNK) chunks.push(docs.slice(i, i + CHUNK));
+  const worker = async (chunk) => {
     const batch = fbDb.batch();
     chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    try { await withTimeout(batch.commit(), 30000, 'timeout no envio em lote'); ok += chunk.length; unqueueUpserts(collectionName, chunk.map(d => d.id)); }
-    catch(e){ console.warn('Firestore: falha no envio em lote', e); fail += chunk.length; fbError = true; }
-    if(onChunk) onChunk(ok + fail, docs.length);
-  }
+    try { await withTimeout(batch.commit(), 30000, 'timeout no envio em lote'); unqueueUpserts(collectionName, chunk.map(d => d.id)); return { ok: true }; }
+    catch(e){ console.warn('Firestore: falha no envio em lote', e); fbError = true; return { ok: false }; }
+  };
+  worker.onChunk = onChunk;
+  const result = await runChunksConcurrently(chunks, worker, 4);
   updateSyncBadge();
-  return { ok, fail };
+  return result;
 }
 async function fsBatchDelete(collectionName, ids){
   queueDeletes(collectionName, ids);
@@ -917,13 +941,15 @@ async function fsBatchDelete(collectionName, ids){
   await ensureFbSettled();
   if(!fbReady || !ids.length) return;
   const CHUNK = 400;
-  for(let i = 0; i < ids.length; i += CHUNK){
-    const chunk = ids.slice(i, i + CHUNK);
+  const chunks = [];
+  for(let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+  const worker = async (chunk) => {
     const batch = fbDb.batch();
     chunk.forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await withTimeout(batch.commit(), 30000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); }
-    catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
-  }
+    try { await withTimeout(batch.commit(), 30000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); return { ok: true }; }
+    catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); return { ok: false }; }
+  };
+  await runChunksConcurrently(chunks, worker, 4);
 }
 async function fsCollectionCount(collectionName){
   await ensureFbSettled();
