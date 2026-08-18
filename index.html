@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.33.1';
 const CHANGELOG = [
+  { v: '1.33.1', data: '2026-08-14', mudancas: [
+    'Corrigido: o botão "Sincronizar" ficava reenviando TODAS as transações de novo a cada clique, em vez de só as pendentes — agora só a configuração inicial da nuvem faz o envio completo (uma única vez); todo o resto é incremental',
+  ]},
   { v: '1.33.0', data: '2026-08-14', mudancas: [
     'Sincronização voltou ao método anterior: conexão em tempo real ligada desde a abertura do app (em vez de conectar/desconectar a cada sincronização), sem forçar "long polling"',
     'Botão "Sincronizar" agora serve para forçar reenvio de pendências, já que a conexão fica ativa o tempo todo',
@@ -1077,14 +1080,12 @@ async function performCloudSync(manual){
         }
       }
 
-      // envia alterações locais que ainda não confirmaram (ou tudo, na primeiríssima vez)
+      // envia exclusões e alterações locais que ainda não confirmaram na nuvem — só o
+      // que está pendente, nunca reenvia tudo de novo (isso só acontece uma vez, na
+      // configuração inicial da nuvem, feita separadamente em "Salvar e sincronizar")
       fbSyncing = true;
       const onProg = manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null;
-      if(!lastCloudSyncAt){
-        await syncAllToFirebase(onProg);
-      } else {
-        await pushLocalChanges(onProg);
-      }
+      await pushLocalChanges(onProg);
 
       lastCloudSyncAt = Date.now();
       try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
@@ -2890,10 +2891,23 @@ async function openDataSheet(){
     try { parsed = JSON.parse(raw); }
     catch(e){ if(status) status.textContent = 'JSON inválido. Confira se copiou o objeto certinho, com aspas nas chaves.'; return; }
     if(!parsed.apiKey || !parsed.projectId){ if(status) status.textContent = 'Configuração incompleta (faltam apiKey/projectId).'; return; }
-    if(status) status.textContent = 'Conectando e sincronizando...';
+    if(status) status.textContent = 'Conectando...';
+    showLoadingScreen('Conectando à nuvem…');
     await saveFirebaseConfig(parsed);
-    await performCloudSync(true);
-    if(status) status.textContent = fbError ? 'Não foi possível conectar. Confira a configuração e as regras do Firestore.' : 'Conectado e sincronizado com sucesso!';
+    await initFirebase();
+    if(fbReady){
+      showLoadingScreen('Sincronizando dados da nuvem…');
+      await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
+      // primeira conexão: manda de uma vez o que já existia neste aparelho, pra
+      // garantir que a nuvem fique com uma base completa. Depois disso, cada edição
+      // é enviada individualmente, em tempo real, sem precisar reenviar tudo de novo.
+      showLoadingScreen('Enviando dados deste aparelho…');
+      await syncAllToFirebase((msg) => { if(msg) showLoadingScreen(msg); });
+      lastCloudSyncAt = Date.now();
+      try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
+    }
+    hideLoadingScreen();
+    if(status) status.textContent = fbReady ? 'Conectado e sincronizado com sucesso!' : 'Não foi possível conectar. Confira a configuração e as regras do Firestore.';
     render();
   });
 
