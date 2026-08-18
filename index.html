@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.5';
+const APP_VERSION = '1.32.6';
 const CHANGELOG = [
+  { v: '1.32.6', data: '2026-08-14', mudancas: [
+    'Sincronização mais rápida: a conexão com a nuvem agora continua ativa em segundo plano depois da primeira sincronização de cada vez que o app é aberto, em vez de desligar e religar do zero a cada sincronização (o que baixava a coleção inteira de novo toda vez)',
+  ]},
   { v: '1.32.5', data: '2026-08-14', mudancas: [
     'Envio de contas/transações em lote agora roda vários lotes de 400 ao mesmo tempo (em vez de um por vez) — bem mais rápido em sincronizações grandes, especialmente com o "long polling" necessário dentro do WebViewer',
   ]},
@@ -1062,7 +1065,10 @@ async function performCloudSync(manual){
   if(manual) showLoadingScreen('Conectando à nuvem…');
   try{
     await withTimeout((async () => {
-      await initFirebase();
+      // Se já está conectado (ex: sincronizou antes nesta mesma sessão), não reconecta
+      // do zero — reaproveita a conexão já ativa. Reconectar do zero é o que fazia cada
+      // sincronização baixar a coleção inteira de novo, mesmo sem nada nunca ter mudado.
+      if(!fbReady) await initFirebase();
       if(!fbReady){
         if(manual) alert('Não foi possível conectar à nuvem agora. Tente novamente mais tarde.');
         return;
@@ -1086,17 +1092,19 @@ async function performCloudSync(manual){
         await pushLocalChanges(onProg);
       }
 
-      // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) com um
-      // snapshot único, e desliga a escuta em seguida — sem tempo real.
-      if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
-      attachFirestoreListeners();
-      await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
-      fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
-      fbUnsubscribers = [];
+      // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) — só precisa
+      // de um snapshot completo na PRIMEIRA vez desta sessão. Depois disso, os listeners
+      // continuam ativos sozinhos recebendo só as diferenças em segundo plano — por isso
+      // NÃO desligamos mais eles no final. Isso é o que faz a 2ª sincronização em diante
+      // (dentro da mesma vez que o app está aberto) ser rápida de novo.
+      if(fbUnsubscribers.length === 0){
+        if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
+        attachFirestoreListeners();
+        await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
+      }
 
       lastCloudSyncAt = Date.now();
       try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
-      fbReady = false; // volta a ficar "desconectado" até a próxima sincronização
       persist();
       render();
       if(manual) alert('Sincronização concluída!');
@@ -2885,7 +2893,7 @@ async function openDataSheet(){
     <p class="muted small" style="margin:-6px 0 6px 0;">
       Status: <strong style="color:${statusColor}">${statusLabel}</strong><br>
       ${localCounts}<br>
-      A sincronização não é mais em tempo real: ela acontece sozinha uma vez por dia (a partir das 7h) ou quando você toca em "Sincronizar" (no topo do app ou aqui embaixo).
+      A sincronização acontece sozinha uma vez por dia (a partir das 7h) ou quando você toca em "Sincronizar" (no topo do app ou aqui embaixo). Depois da primeira sincronização de cada vez que você abre o app, a conexão continua ativa em segundo plano até você fechar o app — assim, sincronizações seguintes na mesma sessão ficam bem mais rápidas.
       ${fbError ? '<br><strong style="color:var(--brick)">Última sincronização teve falhas. Toque em "Sincronizar agora" novamente.</strong>' : ''}
     </p>
     <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
