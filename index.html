@@ -425,8 +425,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.33.2';
+const APP_VERSION = '1.33.3';
 const CHANGELOG = [
+  { v: '1.33.3', data: '2026-08-14', mudancas: [
+    'Removidos todos os tempos-limite artificiais e o paralelismo do envio de dados — volta ao comportamento simples e direto de antes das v1.32.x, pra isolar se a lentidão vem do app ou da rede/Firestore',
+    'Mensagens de progresso da sincronização agora mostram quanto tempo cada lote de 400 registros está levando de verdade',
+    'Mantido só um teto de segurança bem generoso (25 min) pra sincronização inteira, só pra nunca travar 100% sem aviso nenhum',
+  ]},
   { v: '1.33.2', data: '2026-08-14', mudancas: [
     'Envio em lote voltou a ser sequencial (um de cada vez, como era até a v1.31.0) em vez de paralelo — rodar vários ao mesmo tempo disputava a banda da conexão móvel e causava falhas que não existiam antes',
     'Tempo-limite por lote aumentado de 30s para 90s, só como rede de segurança contra travamento de verdade, sem cortar envios que só estavam demorando um pouco mais',
@@ -821,7 +826,7 @@ async function initFirebase(){
     try{
       fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
       fbDb = firebase.firestore();
-      await withTimeout(firebase.auth().signInAnonymously(), 15000, 'timeout no login anônimo');
+      await firebase.auth().signInAnonymously();
       fbReady = true;
       fbConnecting = false;
       attachFirestoreListeners();
@@ -894,7 +899,7 @@ async function fsSetDoc(collectionName, doc){
   queueUpsert(collectionName, doc.id);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await withTimeout(fbDb.collection(collectionName).doc(doc.id).set(doc), 20000, 'timeout ao salvar'); unqueueUpserts(collectionName, [doc.id]); }
+  try { await fbDb.collection(collectionName).doc(doc.id).set(doc); unqueueUpserts(collectionName, [doc.id]); }
   catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
@@ -902,49 +907,27 @@ async function fsDeleteDoc(collectionName, id){
   unqueueUpserts(collectionName, [id]);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await withTimeout(fbDb.collection(collectionName).doc(id).delete(), 20000, 'timeout ao excluir'); unqueueDeletes(collectionName, [id]); }
+  try { await fbDb.collection(collectionName).doc(id).delete(); unqueueDeletes(collectionName, [id]); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
-// Processa vários lotes de uma vez (em paralelo, com um limite), em vez de esperar um
-// terminar pra começar o próximo. Com "long polling" (necessário dentro do WebViewer do
-// Kodular pra não travar), cada lote sozinho é mais lento — rodar vários ao mesmo tempo
-// é o que compensa essa lentidão e acelera o envio de muitos registros de uma vez.
-async function runChunksConcurrently(chunks, worker, concurrency){
-  let ok = 0, fail = 0, doneCount = 0, nextIdx = 0;
-  const total = chunks.reduce((s,c) => s + c.length, 0);
-  async function runOne(){
-    while(nextIdx < chunks.length){
-      const idx = nextIdx++;
-      const r = await worker(chunks[idx]);
-      if(r.ok) ok += chunks[idx].length; else fail += chunks[idx].length;
-      doneCount += chunks[idx].length;
-      if(worker.onChunk) worker.onChunk(doneCount, total);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, runOne));
-  return { ok, fail };
-}
-
 async function fsBatchSet(collectionName, docs, onChunk){
   queueUpserts(collectionName, docs.map(d => d.id));
   await ensureFbSettled();
   if(!fbReady || !docs.length) return { ok: 0, fail: 0 };
   const CHUNK = 400;
-  const chunks = [];
-  for(let i = 0; i < docs.length; i += CHUNK) chunks.push(docs.slice(i, i + CHUNK));
-  const worker = async (chunk) => {
+  let ok = 0, fail = 0;
+  for(let i = 0; i < docs.length; i += CHUNK){
+    const chunk = docs.slice(i, i + CHUNK);
     const batch = fbDb.batch();
     chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    // 90s de tempo-limite (rede de segurança, não deve disparar em uso normal) e um lote
-    // de cada vez (não em paralelo): rodar vários ao mesmo tempo pode disputar a banda
-    // limitada da conexão móvel e piorar tudo. Sequencial, como era antes, é mais confiável.
-    try { await withTimeout(batch.commit(), 90000, 'timeout no envio em lote'); unqueueUpserts(collectionName, chunk.map(d => d.id)); return { ok: true }; }
-    catch(e){ console.warn('Firestore: falha no envio em lote', e); fbError = true; return { ok: false }; }
-  };
-  worker.onChunk = onChunk;
-  const result = await runChunksConcurrently(chunks, worker, 1);
+    const t0 = Date.now();
+    try { await batch.commit(); ok += chunk.length; unqueueUpserts(collectionName, chunk.map(d => d.id)); }
+    catch(e){ console.warn('Firestore: falha no envio em lote', e); fail += chunk.length; fbError = true; }
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    if(onChunk) onChunk(ok + fail, docs.length, secs);
+  }
   updateSyncBadge();
-  return result;
+  return { ok, fail };
 }
 async function fsBatchDelete(collectionName, ids){
   queueDeletes(collectionName, ids);
@@ -952,25 +935,23 @@ async function fsBatchDelete(collectionName, ids){
   await ensureFbSettled();
   if(!fbReady || !ids.length) return;
   const CHUNK = 400;
-  const chunks = [];
-  for(let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
-  const worker = async (chunk) => {
+  for(let i = 0; i < ids.length; i += CHUNK){
+    const chunk = ids.slice(i, i + CHUNK);
     const batch = fbDb.batch();
     chunk.forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await withTimeout(batch.commit(), 90000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); return { ok: true }; }
-    catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); return { ok: false }; }
-  };
-  await runChunksConcurrently(chunks, worker, 1);
+    try { await batch.commit(); unqueueDeletes(collectionName, chunk); }
+    catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
+  }
 }
 async function fsCollectionCount(collectionName){
   await ensureFbSettled();
   if(!fbReady) return null;
   try {
     if(fbDb.collection(collectionName).count){
-      const snap = await withTimeout(fbDb.collection(collectionName).count().get(), 20000, 'timeout ao contar');
+      const snap = await fbDb.collection(collectionName).count().get();
       return snap.data().count;
     }
-    const snap = await withTimeout(fbDb.collection(collectionName).get(), 20000, 'timeout ao contar');
+    const snap = await fbDb.collection(collectionName).get();
     return snap.size;
   } catch(e){ console.warn('Firestore: falha ao contar', e); return null; }
 }
@@ -1004,8 +985,8 @@ async function pushLocalChanges(onProgress){
       if(missing.length) unqueueUpserts(col, missing); // id não existe mais localmente (ex: criado e já excluído antes de sincronizar)
       if(!docs.length) continue;
       if(onProgress) onProgress(`Enviando ${docs.length} alteração(ões) (${col})…`);
-      const r = await fsBatchSet(col, docs, (done, total) => {
-        if(onProgress) onProgress(`Enviando ${col}: ${done}/${total}…`);
+      const r = await fsBatchSet(col, docs, (done, total, secs) => {
+        if(onProgress) onProgress(`Enviando ${col}: ${done}/${total}… (último lote: ${secs}s)`);
       });
       totalFail += r.fail;
       totalSent += r.ok;
@@ -1034,8 +1015,8 @@ async function syncAllToFirebase(onProgress){
     const rBills = await fsBatchSet('bills', bills);
 
     if(onProgress) onProgress(`Enviando 0/${transactions.length} transações... mantenha o app aberto e a tela ligada.`);
-    const rTx = await fsBatchSet('transactions', transactions, (done, total) => {
-      if(onProgress) onProgress(`Enviando ${done}/${total} transações... mantenha o app aberto e a tela ligada.`);
+    const rTx = await fsBatchSet('transactions', transactions, (done, total, secs) => {
+      if(onProgress) onProgress(`Enviando ${done}/${total} transações (último lote: ${secs}s)... mantenha o app aberto e a tela ligada.`);
     });
 
     if(onProgress) onProgress('Conferindo dados na nuvem...');
