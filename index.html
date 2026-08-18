@@ -425,8 +425,12 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.1';
+const APP_VERSION = '1.32.2';
 const CHANGELOG = [
+  { v: '1.32.2', data: '2026-08-14', mudancas: [
+    'Sincronização agora envia só o que mudou desde a última vez (registros novos/editados/excluídos), em vez de reenviar todas as contas, contas a pagar e transações — muito mais rápida quando há muitos lançamentos',
+    'Primeira sincronização (ou logo após conectar a nuvem pela primeira vez) continua enviando tudo, para garantir uma base completa',
+  ]},
   { v: '1.32.1', data: '2026-08-14', mudancas: [
     'Corrigido: sincronização podia ficar travada para sempre em "Sincronizando..." se a conexão com o Firebase demorasse demais para responder (agora tem um tempo-limite de segurança)',
   ]},
@@ -694,18 +698,22 @@ function fbAllFirstSnapshotsIn(){ return fbFirstSnapshot.accounts && fbFirstSnap
 
 // A sincronização com a nuvem NÃO é mais automática/contínua. Ela só acontece:
 // (1) uma vez por dia, a partir das 7h, sozinha; ou (2) quando a pessoa toca no botão
-// de sincronizar. Enquanto isso, exclusões feitas localmente ficam guardadas aqui até
-// a próxima sincronização, pra não se perderem.
+// de sincronizar. Enquanto isso, exclusões E alterações feitas localmente ficam
+// guardadas aqui até a próxima sincronização — que só envia essas mudanças, não tudo
+// de novo, pra não recarregar milhares de registros sem necessidade.
 let lastCloudSyncAt = null;
 let pendingDeletes = { accounts: [], bills: [], transactions: [] };
+let pendingUpserts = { accounts: [], bills: [], transactions: [] };
 async function loadSyncState(){
   try {
     const stored = await idbGetAll();
     lastCloudSyncAt = stored.lastCloudSyncAt || null;
     pendingDeletes = stored.pendingDeletes || { accounts: [], bills: [], transactions: [] };
+    pendingUpserts = stored.pendingUpserts || { accounts: [], bills: [], transactions: [] };
   } catch(e){}
 }
 async function savePendingDeletes(){ try { await idbSet('pendingDeletes', pendingDeletes); } catch(e){} }
+async function savePendingUpserts(){ try { await idbSet('pendingUpserts', pendingUpserts); } catch(e){} }
 function queueDelete(collectionName, id){
   if(!pendingDeletes[collectionName]) pendingDeletes[collectionName] = [];
   if(!pendingDeletes[collectionName].includes(id)) pendingDeletes[collectionName].push(id);
@@ -720,6 +728,21 @@ function unqueueDeletes(collectionName, ids){
   if(!pendingDeletes[collectionName]) return;
   pendingDeletes[collectionName] = pendingDeletes[collectionName].filter(id => !ids.includes(id));
   savePendingDeletes();
+}
+function queueUpsert(collectionName, id){
+  if(!pendingUpserts[collectionName]) pendingUpserts[collectionName] = [];
+  if(!pendingUpserts[collectionName].includes(id)) pendingUpserts[collectionName].push(id);
+  savePendingUpserts();
+}
+function queueUpserts(collectionName, ids){
+  if(!pendingUpserts[collectionName]) pendingUpserts[collectionName] = [];
+  ids.forEach(id => { if(!pendingUpserts[collectionName].includes(id)) pendingUpserts[collectionName].push(id); });
+  savePendingUpserts();
+}
+function unqueueUpserts(collectionName, ids){
+  if(!pendingUpserts[collectionName]) return;
+  pendingUpserts[collectionName] = pendingUpserts[collectionName].filter(id => !ids.includes(id));
+  savePendingUpserts();
 }
 
 async function loadFirebaseConfig(){
@@ -835,19 +858,22 @@ function attachFirestoreListeners(){
 }
 
 async function fsSetDoc(collectionName, doc){
+  queueUpsert(collectionName, doc.id);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await fbDb.collection(collectionName).doc(doc.id).set(doc); }
+  try { await fbDb.collection(collectionName).doc(doc.id).set(doc); unqueueUpserts(collectionName, [doc.id]); }
   catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
   queueDelete(collectionName, id);
+  unqueueUpserts(collectionName, [id]);
   await ensureFbSettled();
   if(!fbReady) return;
   try { await fbDb.collection(collectionName).doc(id).delete(); unqueueDeletes(collectionName, [id]); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsBatchSet(collectionName, docs, onChunk){
+  queueUpserts(collectionName, docs.map(d => d.id));
   await ensureFbSettled();
   if(!fbReady || !docs.length) return { ok: 0, fail: 0 };
   const CHUNK = 400;
@@ -856,7 +882,7 @@ async function fsBatchSet(collectionName, docs, onChunk){
     const chunk = docs.slice(i, i + CHUNK);
     const batch = fbDb.batch();
     chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    try { await batch.commit(); ok += chunk.length; }
+    try { await batch.commit(); ok += chunk.length; unqueueUpserts(collectionName, chunk.map(d => d.id)); }
     catch(e){ console.warn('Firestore: falha no envio em lote', e); fail += chunk.length; fbError = true; }
     if(onChunk) onChunk(ok + fail, docs.length);
   }
@@ -865,6 +891,7 @@ async function fsBatchSet(collectionName, docs, onChunk){
 }
 async function fsBatchDelete(collectionName, ids){
   queueDeletes(collectionName, ids);
+  unqueueUpserts(collectionName, ids);
   await ensureFbSettled();
   if(!fbReady || !ids.length) return;
   const CHUNK = 400;
@@ -896,6 +923,44 @@ async function requestWakeLockSafe(){
 }
 function releaseWakeLockSafe(){
   try { if(fbWakeLock){ fbWakeLock.release(); fbWakeLock = null; } } catch(e){}
+}
+
+// Envia só o que mudou desde a última sincronização (registros nas filas de
+// pendingUpserts/pendingDeletes), em vez de reenviar tudo. Muito mais rápido quando
+// há muitos registros. É o que a sincronização de rotina usa; syncAllToFirebase()
+// (reenvio completo) fica reservado pra primeira conexão ou pra um pedido explícito.
+async function pushLocalChanges(onProgress){
+  if(!fbReady) return false;
+  fbSyncing = true;
+  await requestWakeLockSafe();
+  try{
+    const collections = { accounts, bills, transactions };
+    let totalFail = 0, totalSent = 0;
+    for(const col of ['accounts','bills','transactions']){
+      const ids = (pendingUpserts[col] || []).slice();
+      if(!ids.length) continue;
+      const byId = new Map(collections[col].map(d => [d.id, d]));
+      const docs = ids.map(id => byId.get(id)).filter(Boolean);
+      const missing = ids.filter(id => !byId.has(id));
+      if(missing.length) unqueueUpserts(col, missing); // id não existe mais localmente (ex: criado e já excluído antes de sincronizar)
+      if(!docs.length) continue;
+      if(onProgress) onProgress(`Enviando ${docs.length} alteração(ões) (${col})…`);
+      const r = await fsBatchSet(col, docs, (done, total) => {
+        if(onProgress) onProgress(`Enviando ${col}: ${done}/${total}…`);
+      });
+      totalFail += r.fail;
+      totalSent += r.ok;
+    }
+    if(onProgress){
+      onProgress(totalFail > 0
+        ? `⚠ Envio incompleto: ${totalFail} registro(s) falharam. Sincronize novamente para tentar de novo.`
+        : totalSent > 0 ? `✓ ${totalSent} alteração(ões) enviada(s).` : '✓ Nada novo para enviar.');
+    }
+  } finally {
+    fbSyncing = false;
+    releaseWakeLockSafe();
+  }
+  return true;
 }
 
 async function syncAllToFirebase(onProgress){
@@ -964,9 +1029,14 @@ async function performCloudSync(manual){
         }
       }
 
-      // 2) envia o estado local atual (cobre criações/edições feitas offline)
-      fbSyncing = true; // syncAllToFirebase mexe nessa flag também; garante que continue true até o fim
-      await syncAllToFirebase(manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null);
+      // 2) envia o que mudou desde a última sincronização (ou tudo, se for a primeira vez)
+      fbSyncing = true; // pushLocalChanges/syncAllToFirebase mexem nessa flag também; garante que continue true até o fim
+      const onProg = manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null;
+      if(!lastCloudSyncAt){
+        await syncAllToFirebase(onProg);
+      } else {
+        await pushLocalChanges(onProg);
+      }
 
       // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) com um
       // snapshot único, e desliga a escuta em seguida — sem tempo real.
