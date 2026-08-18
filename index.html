@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.3';
+const APP_VERSION = '1.32.4';
 const CHANGELOG = [
+  { v: '1.32.4', data: '2026-08-14', mudancas: [
+    'Corrigido: operações de envio ao Firestore podiam ficar penduradas para sempre dentro do WebViewer do Kodular (transporte de rede padrão falha silenciosamente em WebViews) — agora força "long polling" e cada operação tem seu próprio tempo-limite',
+  ]},
   { v: '1.32.3', data: '2026-08-14', mudancas: [
     'Corrigido bug sério de performance: processar os dados vindos da nuvem fazia uma varredura completa por item, o que com muitos registros (milhares de transações) travava o app por muito tempo durante a sincronização',
   ]},
@@ -801,6 +804,10 @@ async function initFirebase(){
     try{
       fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
       fbDb = firebase.firestore();
+      // Dentro de WebViews como a do Kodular, o transporte de rede padrão do Firestore
+      // (streaming) às vezes falha de forma silenciosa — a operação nem dá erro nem
+      // termina, fica pendurada pra sempre. Forçar "long polling" evita isso.
+      try { fbDb.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch(e){}
       await withTimeout(firebase.auth().signInAnonymously(), 15000, 'timeout no login anônimo');
       fbReady = true;
       fbConnecting = false;
@@ -876,7 +883,7 @@ async function fsSetDoc(collectionName, doc){
   queueUpsert(collectionName, doc.id);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await fbDb.collection(collectionName).doc(doc.id).set(doc); unqueueUpserts(collectionName, [doc.id]); }
+  try { await withTimeout(fbDb.collection(collectionName).doc(doc.id).set(doc), 20000, 'timeout ao salvar'); unqueueUpserts(collectionName, [doc.id]); }
   catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
@@ -884,7 +891,7 @@ async function fsDeleteDoc(collectionName, id){
   unqueueUpserts(collectionName, [id]);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await fbDb.collection(collectionName).doc(id).delete(); unqueueDeletes(collectionName, [id]); }
+  try { await withTimeout(fbDb.collection(collectionName).doc(id).delete(), 20000, 'timeout ao excluir'); unqueueDeletes(collectionName, [id]); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsBatchSet(collectionName, docs, onChunk){
@@ -897,7 +904,7 @@ async function fsBatchSet(collectionName, docs, onChunk){
     const chunk = docs.slice(i, i + CHUNK);
     const batch = fbDb.batch();
     chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    try { await batch.commit(); ok += chunk.length; unqueueUpserts(collectionName, chunk.map(d => d.id)); }
+    try { await withTimeout(batch.commit(), 30000, 'timeout no envio em lote'); ok += chunk.length; unqueueUpserts(collectionName, chunk.map(d => d.id)); }
     catch(e){ console.warn('Firestore: falha no envio em lote', e); fail += chunk.length; fbError = true; }
     if(onChunk) onChunk(ok + fail, docs.length);
   }
@@ -914,7 +921,7 @@ async function fsBatchDelete(collectionName, ids){
     const chunk = ids.slice(i, i + CHUNK);
     const batch = fbDb.batch();
     chunk.forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await batch.commit(); unqueueDeletes(collectionName, chunk); }
+    try { await withTimeout(batch.commit(), 30000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); }
     catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
   }
 }
@@ -923,10 +930,10 @@ async function fsCollectionCount(collectionName){
   if(!fbReady) return null;
   try {
     if(fbDb.collection(collectionName).count){
-      const snap = await fbDb.collection(collectionName).count().get();
+      const snap = await withTimeout(fbDb.collection(collectionName).count().get(), 20000, 'timeout ao contar');
       return snap.data().count;
     }
-    const snap = await fbDb.collection(collectionName).get();
+    const snap = await withTimeout(fbDb.collection(collectionName).get(), 20000, 'timeout ao contar');
     return snap.size;
   } catch(e){ console.warn('Firestore: falha ao contar', e); return null; }
 }
