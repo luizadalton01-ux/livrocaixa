@@ -425,8 +425,12 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.6';
+const APP_VERSION = '1.33.0';
 const CHANGELOG = [
+  { v: '1.33.0', data: '2026-08-14', mudancas: [
+    'Sincronização voltou ao método anterior: conexão em tempo real ligada desde a abertura do app (em vez de conectar/desconectar a cada sincronização), sem forçar "long polling"',
+    'Botão "Sincronizar" agora serve para forçar reenvio de pendências, já que a conexão fica ativa o tempo todo',
+  ]},
   { v: '1.32.6', data: '2026-08-14', mudancas: [
     'Sincronização mais rápida: a conexão com a nuvem agora continua ativa em segundo plano depois da primeira sincronização de cada vez que o app é aberto, em vez de desligar e religar do zero a cada sincronização (o que baixava a coleção inteira de novo toda vez)',
   ]},
@@ -780,10 +784,10 @@ function formatRelativeSync(ts){
 function updateSyncBadge(){
   const el = document.getElementById('syncBadge');
   if(!el) return;
-  if(fbSyncing) el.textContent = '☁ Sincronizando...';
+  if(fbConnecting) el.textContent = '☁ Conectando...';
+  else if(fbReady) el.textContent = fbError ? '☁ Conectado, com erros recentes ⚠' : '☁ Sincronizado';
   else if(fbError) el.textContent = '⚠ Erro de sincronização';
-  else if(lastCloudSyncAt) el.textContent = '☁ Sincronizado ' + formatRelativeSync(lastCloudSyncAt);
-  else el.textContent = '☁ Ainda não sincronizado';
+  else el.textContent = '';
 }
 
 let fbInitPromise = null;
@@ -810,16 +814,10 @@ async function initFirebase(){
     try{
       fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
       fbDb = firebase.firestore();
-      // Dentro de WebViews como a do Kodular, o transporte de rede padrão do Firestore
-      // (streaming) às vezes falha de forma silenciosa — a operação nem dá erro nem
-      // termina, fica pendurada pra sempre. Forçar "long polling" evita isso.
-      try { fbDb.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch(e){}
       await withTimeout(firebase.auth().signInAnonymously(), 15000, 'timeout no login anônimo');
       fbReady = true;
       fbConnecting = false;
-      // Não liga os listeners em tempo real aqui — a sincronização agora acontece só
-      // sob demanda, dentro de performCloudSync(), que liga e desliga os listeners
-      // apenas durante a própria sincronização.
+      attachFirestoreListeners();
       updateSyncBadge();
     } catch(e){
       console.warn('Falha ao iniciar Firebase:', e);
@@ -1048,11 +1046,10 @@ async function syncAllToFirebase(onProgress){
   return true;
 }
 
-// Sincronização completa sob demanda: conecta, envia exclusões pendentes, envia o
-// estado local atual (upsert) e por fim busca dados da nuvem (ex: lançados em outro
-// aparelho) — tudo isso uma única vez, sem deixar conexão em tempo real ligada depois.
-// Chamada (1) automaticamente uma vez por dia a partir das 7h, ou (2) manualmente pelo
-// botão de sincronizar no topo do app.
+// Botão "Sincronizar": com a conexão em tempo real já ativa desde a abertura do app
+// (voltamos a este modelo, mais simples e confiável dentro do WebViewer do Kodular),
+// isso serve como um "forçar agora": garante que está conectado, reenvia exclusões e
+// alterações pendentes (útil se algo ficou pendurado offline) e confirma o status.
 async function performCloudSync(manual){
   if(fbSyncing) return;
   const config = await loadFirebaseConfig();
@@ -1065,16 +1062,13 @@ async function performCloudSync(manual){
   if(manual) showLoadingScreen('Conectando à nuvem…');
   try{
     await withTimeout((async () => {
-      // Se já está conectado (ex: sincronizou antes nesta mesma sessão), não reconecta
-      // do zero — reaproveita a conexão já ativa. Reconectar do zero é o que fazia cada
-      // sincronização baixar a coleção inteira de novo, mesmo sem nada nunca ter mudado.
       if(!fbReady) await initFirebase();
       if(!fbReady){
         if(manual) alert('Não foi possível conectar à nuvem agora. Tente novamente mais tarde.');
         return;
       }
 
-      // 1) envia exclusões feitas localmente desde a última sincronização
+      // envia exclusões feitas localmente que ainda não confirmaram na nuvem
       for(const col of ['accounts','bills','transactions']){
         const ids = (pendingDeletes[col] || []).slice();
         if(ids.length){
@@ -1083,8 +1077,8 @@ async function performCloudSync(manual){
         }
       }
 
-      // 2) envia o que mudou desde a última sincronização (ou tudo, se for a primeira vez)
-      fbSyncing = true; // pushLocalChanges/syncAllToFirebase mexem nessa flag também; garante que continue true até o fim
+      // envia alterações locais que ainda não confirmaram (ou tudo, na primeiríssima vez)
+      fbSyncing = true;
       const onProg = manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null;
       if(!lastCloudSyncAt){
         await syncAllToFirebase(onProg);
@@ -1092,20 +1086,8 @@ async function performCloudSync(manual){
         await pushLocalChanges(onProg);
       }
 
-      // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) — só precisa
-      // de um snapshot completo na PRIMEIRA vez desta sessão. Depois disso, os listeners
-      // continuam ativos sozinhos recebendo só as diferenças em segundo plano — por isso
-      // NÃO desligamos mais eles no final. Isso é o que faz a 2ª sincronização em diante
-      // (dentro da mesma vez que o app está aberto) ser rápida de novo.
-      if(fbUnsubscribers.length === 0){
-        if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
-        attachFirestoreListeners();
-        await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
-      }
-
       lastCloudSyncAt = Date.now();
       try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
-      persist();
       render();
       if(manual) alert('Sincronização concluída!');
     })(), 5 * 60 * 1000, 'timeout na sincronização');
@@ -1119,17 +1101,6 @@ async function performCloudSync(manual){
     updateSyncBadge();
     if(manual) hideLoadingScreen();
   }
-}
-
-// Dispara a sincronização diária sozinha, uma vez por dia, a partir das 7h — nunca antes.
-async function maybeAutoSyncDaily(){
-  const config = await loadFirebaseConfig();
-  if(!config || !config.apiKey) return;
-  const now = new Date();
-  if(now.getHours() < 7) return;
-  const alreadyToday = lastCloudSyncAt && new Date(lastCloudSyncAt).toDateString() === now.toDateString();
-  if(alreadyToday) return;
-  await performCloudSync(false);
 }
 
 /* =========================== notificações de vencimento =========================== */
@@ -2875,8 +2846,8 @@ async function openDataSheet(){
 
   const existingConfig = await loadFirebaseConfig();
   const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
-  const statusLabel = fbSyncing ? 'Sincronizando...' : lastCloudSyncAt ? `Sincronizado ${formatRelativeSync(lastCloudSyncAt)}` : existingConfig ? 'Configurado, ainda não sincronizado' : 'Não configurado';
-  const statusColor = fbSyncing ? 'var(--gold)' : fbError ? 'var(--brick)' : 'var(--ledger)';
+  const statusLabel = fbConnecting ? 'Conectando...' : fbReady ? (fbError ? 'Conectado, com erros recentes ⚠' : 'Conectado ☁') : fbError ? 'Erro de conexão ⚠' : 'Não conectado';
+  const statusColor = fbConnecting ? 'var(--gold)' : fbReady && !fbError ? 'var(--ledger)' : 'var(--brick)';
   const localCounts = `${accounts.length} contas · ${transactions.length} transações · ${bills.length} contas a pagar (neste aparelho)`;
 
   openModal(`
@@ -2893,8 +2864,8 @@ async function openDataSheet(){
     <p class="muted small" style="margin:-6px 0 6px 0;">
       Status: <strong style="color:${statusColor}">${statusLabel}</strong><br>
       ${localCounts}<br>
-      A sincronização acontece sozinha uma vez por dia (a partir das 7h) ou quando você toca em "Sincronizar" (no topo do app ou aqui embaixo). Depois da primeira sincronização de cada vez que você abre o app, a conexão continua ativa em segundo plano até você fechar o app — assim, sincronizações seguintes na mesma sessão ficam bem mais rápidas.
-      ${fbError ? '<br><strong style="color:var(--brick)">Última sincronização teve falhas. Toque em "Sincronizar agora" novamente.</strong>' : ''}
+      Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real.
+      ${fbError ? '<br><strong style="color:var(--brick)">Se os dados não baterem entre aparelhos, toque em "Sincronizar agora" sem sair do app até a confirmação aparecer.</strong>' : ''}
     </p>
     <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
       <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
@@ -3018,15 +2989,17 @@ loadInitialState().then(async () => {
   await loadCategorias();
   render();
   await loadSyncState();
-  updateSyncBadge();
+  const cloudConfig = await loadFirebaseConfig();
+  const hasCloudConfig = !!(cloudConfig && cloudConfig.apiKey);
+  initFirebase();
   await loadNotifiedSlots();
   checkBillReminders();
+  setInterval(checkBillReminders, 15 * 60 * 1000);
+  if(hasCloudConfig){
+    showLoadingScreen('Sincronizando dados da nuvem…');
+    await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
+  }
   syncAlarmsWithKodular();
-  // A sincronização com a nuvem NÃO acontece mais automaticamente ao abrir o app.
-  // Ela só roda sozinha uma vez por dia (a partir das 7h) ou quando a pessoa toca no
-  // botão de sincronizar no topo. As duas checagens abaixo cuidam disso.
-  maybeAutoSyncDaily();
-  setInterval(() => { checkBillReminders(); maybeAutoSyncDaily(); }, 15 * 60 * 1000);
   const elapsed = Date.now() - appLoadStart;
   setTimeout(hideLoadingScreen, Math.max(0, MIN_LOADING_MS - elapsed));
 }).catch(() => { hideLoadingScreen(); });
