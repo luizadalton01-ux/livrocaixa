@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.2';
+const APP_VERSION = '1.32.3';
 const CHANGELOG = [
+  { v: '1.32.3', data: '2026-08-14', mudancas: [
+    'Corrigido bug sério de performance: processar os dados vindos da nuvem fazia uma varredura completa por item, o que com muitos registros (milhares de transações) travava o app por muito tempo durante a sincronização',
+  ]},
   { v: '1.32.2', data: '2026-08-14', mudancas: [
     'Sincronização agora envia só o que mudou desde a última vez (registros novos/editados/excluídos), em vez de reenviar todas as contas, contas a pagar e transações — muito mais rápida quando há muitos lançamentos',
     'Primeira sincronização (ou logo após conectar a nuvem pela primeira vez) continua enviando tudo, para garantir uma base completa',
@@ -823,18 +826,30 @@ async function ensureFbSettled(){
   if(fbInitPromise) { try { await fbInitPromise; } catch(e){} }
 }
 
+// Processa as mudanças vindas do Firestore. Importante: usa um mapa (id -> índice) em
+// vez de "findIndex" por item — com milhares de registros (ex: 17 mil transações), fazer
+// uma varredura completa por item, dentro de um laço, virava uma conta gigantesca e
+// travava o app por muito tempo toda vez que a sincronização buscava dados da nuvem.
 function applyDocChanges(collectionKey, arrRef, changes){
   let changed = false;
+  const idIndex = new Map();
+  arrRef.forEach((item, idx) => idIndex.set(item.id, idx));
+  const removedIds = new Set();
   changes.forEach(change => {
     const data = change.doc.data();
-    const idx = arrRef.findIndex(x => x.id === data.id);
     if(change.type === 'removed'){
-      if(idx > -1){ arrRef.splice(idx, 1); changed = true; }
+      removedIds.add(data.id);
+      changed = true;
     } else {
-      if(idx > -1) arrRef[idx] = data; else arrRef.push(data);
+      const idx = idIndex.get(data.id);
+      if(idx !== undefined) arrRef[idx] = data;
+      else { arrRef.push(data); idIndex.set(data.id, arrRef.length - 1); }
       changed = true;
     }
   });
+  if(removedIds.size){
+    for(let i = arrRef.length - 1; i >= 0; i--){ if(removedIds.has(arrRef[i].id)) arrRef.splice(i, 1); }
+  }
   return changed;
 }
 
