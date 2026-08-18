@@ -425,8 +425,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.32.0';
+const APP_VERSION = '1.32.1';
 const CHANGELOG = [
+  { v: '1.32.1', data: '2026-08-14', mudancas: [
+    'Corrigido: sincronização podia ficar travada para sempre em "Sincronizando..." se a conexão com o Firebase demorasse demais para responder (agora tem um tempo-limite de segurança)',
+  ]},
   { v: '1.32.0', data: '2026-08-14', mudancas: [
     'Categorias de entrada e saída agora podem ser criadas e excluídas ("Dados do app" → "Gerenciar categorias")',
     'Saldo nos cartões da aba Contas e na barra lateral da aba Transações agora é o saldo do dia (ignora lançamentos futuros)',
@@ -749,6 +752,15 @@ function updateSyncBadge(){
 }
 
 let fbInitPromise = null;
+// Nunca deixa uma promessa pendurada pra sempre — usado para blindar chamadas de rede
+// (ex: login no Firebase) que às vezes nunca resolvem nem rejeitam com conexão ruim.
+function withTimeout(promise, ms, timeoutMsg){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(timeoutMsg || 'timeout')), ms)),
+  ]);
+}
+
 async function initFirebase(){
   fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
   fbUnsubscribers = [];
@@ -763,7 +775,7 @@ async function initFirebase(){
     try{
       fbApp = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(config);
       fbDb = firebase.firestore();
-      await firebase.auth().signInAnonymously();
+      await withTimeout(firebase.auth().signInAnonymously(), 15000, 'timeout no login anônimo');
       fbReady = true;
       fbConnecting = false;
       // Não liga os listeners em tempo real aqui — a sincronização agora acontece só
@@ -936,41 +948,48 @@ async function performCloudSync(manual){
   updateSyncBadge();
   if(manual) showLoadingScreen('Conectando à nuvem…');
   try{
-    await initFirebase();
-    if(!fbReady){
-      if(manual) alert('Não foi possível conectar à nuvem agora. Tente novamente mais tarde.');
-      return;
-    }
-
-    // 1) envia exclusões feitas localmente desde a última sincronização
-    for(const col of ['accounts','bills','transactions']){
-      const ids = (pendingDeletes[col] || []).slice();
-      if(ids.length){
-        if(manual) showLoadingScreen(`Enviando exclusões (${col})…`);
-        await fsBatchDelete(col, ids);
+    await withTimeout((async () => {
+      await initFirebase();
+      if(!fbReady){
+        if(manual) alert('Não foi possível conectar à nuvem agora. Tente novamente mais tarde.');
+        return;
       }
-    }
 
-    // 2) envia o estado local atual (cobre criações/edições feitas offline)
-    fbSyncing = true; // syncAllToFirebase mexe nessa flag também; garante que continue true até o fim
-    await syncAllToFirebase(manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null);
+      // 1) envia exclusões feitas localmente desde a última sincronização
+      for(const col of ['accounts','bills','transactions']){
+        const ids = (pendingDeletes[col] || []).slice();
+        if(ids.length){
+          if(manual) showLoadingScreen(`Enviando exclusões (${col})…`);
+          await fsBatchDelete(col, ids);
+        }
+      }
 
-    // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) com um
-    // snapshot único, e desliga a escuta em seguida — sem tempo real.
-    if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
-    attachFirestoreListeners();
-    await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
-    fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
-    fbUnsubscribers = [];
+      // 2) envia o estado local atual (cobre criações/edições feitas offline)
+      fbSyncing = true; // syncAllToFirebase mexe nessa flag também; garante que continue true até o fim
+      await syncAllToFirebase(manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null);
 
-    lastCloudSyncAt = Date.now();
-    try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
-    fbReady = false; // volta a ficar "desconectado" até a próxima sincronização
-    persist();
-    render();
-    if(manual) alert('Sincronização concluída!');
+      // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) com um
+      // snapshot único, e desliga a escuta em seguida — sem tempo real.
+      if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
+      attachFirestoreListeners();
+      await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
+      fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
+      fbUnsubscribers = [];
+
+      lastCloudSyncAt = Date.now();
+      try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
+      fbReady = false; // volta a ficar "desconectado" até a próxima sincronização
+      persist();
+      render();
+      if(manual) alert('Sincronização concluída!');
+    })(), 5 * 60 * 1000, 'timeout na sincronização');
+  } catch(e){
+    console.warn('Sincronização não concluída:', e);
+    fbError = true;
+    if(manual) alert('A sincronização não foi concluída (' + (e && e.message === 'timeout na sincronização' ? 'demorou demais e foi cancelada' : 'erro de conexão') + '). Tente novamente.');
   } finally {
     fbSyncing = false;
+    fbConnecting = false;
     updateSyncBadge();
     if(manual) hideLoadingScreen();
   }
