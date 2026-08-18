@@ -68,6 +68,9 @@
   .icon-topbtn{ margin-left:auto; background:rgba(255,255,255,0.12); border:none; border-radius:8px; color:#fff;
     width:32px; height:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .icon-topbtn svg{ width:16px; height:16px; }
+  @keyframes eyeBlink{ 0%{ transform:scale(1); opacity:1; } 50%{ transform:scale(0.75); opacity:0.45; } 100%{ transform:scale(1); opacity:1; } }
+  #toggleBalanceBtn.blink{ animation: eyeBlink 0.32s ease; }
+  .balance-masked{ letter-spacing:2px; }
   .balance-strip{ margin-top:14px; }
   .balance-strip .label{ font-size:11px; color:#AEB8C6; margin:0; }
   .balance-strip .value{ font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:600; margin:2px 0 0 0;
@@ -383,7 +386,12 @@
     </div>
     <div class="balance-strip">
       <p class="label">Saldo total</p>
-      <p class="value" id="topBalance">R$ 0,00</p>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <p class="value" id="topBalance">R$ 0,00</p>
+        <button id="toggleBalanceBtn" class="icon-topbtn" type="button" title="Mostrar/ocultar saldos" style="width:30px; height:30px; margin-left:0;">
+          <svg id="eyeIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -417,8 +425,14 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 const CHANGELOG = [
+  { v: '1.32.0', data: '2026-08-14', mudancas: [
+    'Categorias de entrada e saída agora podem ser criadas e excluídas ("Dados do app" → "Gerenciar categorias")',
+    'Saldo nos cartões da aba Contas e na barra lateral da aba Transações agora é o saldo do dia (ignora lançamentos futuros)',
+    'Botão de olho no topo para ocultar/mostrar os saldos; o app agora sempre abre com os saldos ocultos',
+    'Botão voltar do celular não fecha mais o app sozinho (precisa também do ajuste correspondente nos blocos do Kodular — Screen1.BackPressed)',
+  ]},
   { v: '1.31.0', data: '2026-08-14', mudancas: [
     'Botão de sino removido; botão de lupa agora abre a busca de transações',
     'Novo botão "Sincronizar" no topo (entre Exportar e Localizar)',
@@ -1203,8 +1217,36 @@ function addRecurrence(dateStr, freq, times){
   return d.toISOString().slice(0,10);
 }
 
-const CAT_ENTRADA = ['Salário','Freelance','Investimentos','Reembolso','Outros'];
-const CAT_SAIDA = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Outros'];
+let CAT_ENTRADA = ['Salário','Freelance','Investimentos','Reembolso','Outros'];
+let CAT_SAIDA = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Outros'];
+async function loadCategorias(){
+  try {
+    const stored = await idbGetAll();
+    if(Array.isArray(stored.catEntrada) && stored.catEntrada.length) CAT_ENTRADA = stored.catEntrada;
+    if(Array.isArray(stored.catSaida) && stored.catSaida.length) CAT_SAIDA = stored.catSaida;
+  } catch(e){}
+}
+async function saveCategorias(){
+  try { await idbSet('catEntrada', CAT_ENTRADA); await idbSet('catSaida', CAT_SAIDA); } catch(e){}
+}
+function addCategoria(tipo, nome){
+  nome = (nome||'').trim();
+  if(!nome) return false;
+  const arr = tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA;
+  if(arr.some(c => c.toLowerCase() === nome.toLowerCase())) return false;
+  arr.push(nome);
+  saveCategorias();
+  return true;
+}
+function removeCategoria(tipo, nome){
+  const emUso = transactions.some(t => t.categoria === nome && (tipo === 'entrada' ? t.tipo === 'entrada' : t.tipo === 'saida'))
+    || bills.some(b => b.categoria === nome);
+  if(emUso && !confirm(`A categoria "${nome}" está em uso em algum lançamento. As transações existentes mantêm o nome da categoria, mas ela deixará de aparecer na lista para novos lançamentos. Continuar?`)) return false;
+  if(tipo === 'entrada') CAT_ENTRADA = CAT_ENTRADA.filter(c => c !== nome);
+  else CAT_SAIDA = CAT_SAIDA.filter(c => c !== nome);
+  saveCategorias();
+  return true;
+}
 const PIE_COLORS = ['#1B4332','#C9A227','#B3432B','#2D6A4F','#7A6F52','#5B7B9A','#8C5E58','#4A4238'];
 const CAT_COLORS = {
   'Moradia':'#1C6E7A', 'Alimentação':'#C9A227', 'Transporte':'#6E4C88', 'Saúde':'#B3432B',
@@ -1222,6 +1264,27 @@ const BALANCE_POSITIVE_COLOR = '#2E93A2'; // azul (teal-light)
 const BALANCE_NEGATIVE_COLOR = '#B3432B'; // vermelho (brick)
 function accountBalanceToneClass(balance){ return balance < 0 ? 'acc-tone-negative' : 'acc-tone-positive'; }
 function accountBalanceBorderColor(balance){ return balance < 0 ? BALANCE_NEGATIVE_COLOR : BALANCE_POSITIVE_COLOR; }
+
+// Oculta saldos por padrão sempre que o app abre (privacidade em locais públicos).
+// É um estado só desta sessão: cada vez que o app é aberto, começa oculto de novo.
+let balancesHidden = true;
+const HIDDEN_BALANCE_MASK = '••••••';
+function maskBalance(formatted){ return balancesHidden ? HIDDEN_BALANCE_MASK : formatted; }
+const EYE_OPEN_SVG = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>';
+const EYE_CLOSED_SVG = '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.29 20.29 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a20.29 20.29 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+function updateEyeIcon(){
+  const el = document.getElementById('eyeIcon');
+  if(el) el.innerHTML = balancesHidden ? EYE_CLOSED_SVG : EYE_OPEN_SVG;
+}
+document.body.addEventListener('click', (e) => {
+  if(e.target.id === 'toggleBalanceBtn' || e.target.closest('#toggleBalanceBtn')){
+    balancesHidden = !balancesHidden;
+    updateEyeIcon();
+    const btn = document.getElementById('toggleBalanceBtn');
+    if(btn){ btn.classList.remove('blink'); void btn.offsetWidth; btn.classList.add('blink'); }
+    render();
+  }
+});
 
 // Unifica duas fontes de "coisas pendentes" para os quadros da Visão Geral:
 // 1) contas a pagar (aba "A pagar") ainda não pagas — usam o campo "vencimento";
@@ -1247,6 +1310,17 @@ function balanceOf(accId){
   const acc = accounts.find(a => a.id === accId);
   if(!acc) return 0;
   const delta = transactions.filter(t => t.contaId === accId)
+    .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
+  return (acc.saldoInicial || 0) + delta;
+}
+// Mesmo cálculo, mas considerando só transações até hoje (ignora lançamentos futuros
+// já cadastrados) — usado nos cartões da aba Contas e na barra lateral de Transações,
+// pra mostrar o saldo "do dia" em vez do saldo projetado com lançamentos futuros.
+function balanceOfToday(accId){
+  const acc = accounts.find(a => a.id === accId);
+  if(!acc) return 0;
+  const today = todayStr();
+  const delta = transactions.filter(t => t.contaId === accId && t.data <= today)
     .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
   return (acc.saldoInicial || 0) + delta;
 }
@@ -1297,7 +1371,9 @@ const ICONS = {
 
 /* =========================== render root =========================== */
 function render(){
-  document.getElementById('topBalance').textContent = fmtBRL(totalBalance());
+  document.getElementById('topBalance').textContent = maskBalance(fmtBRL(totalBalance()));
+  document.getElementById('topBalance').className = balancesHidden ? 'value balance-masked' : 'value';
+  updateEyeIcon();
   const vb = document.getElementById('versionBadge');
   if (vb) vb.textContent = 'v' + APP_VERSION;
   updateSyncBadge();
@@ -1344,7 +1420,7 @@ function renderDashboard(){
 
   return `<div class="stack">
     <section class="cards">
-      <div class="summary-card tone-ink"><div class="summary-icon">${ICONS.wallet}</div><p class="summary-label">Saldo total</p><p class="summary-value">${fmtBRL(totalBalance())}</p></div>
+      <div class="summary-card tone-ink"><div class="summary-icon">${ICONS.wallet}</div><p class="summary-label">Saldo total</p><p class="summary-value ${balancesHidden?'balance-masked':''}">${maskBalance(fmtBRL(totalBalance()))}</p></div>
       <div class="summary-card tone-green"><div class="summary-icon">${ICONS.up}</div><p class="summary-label">Entradas do mês</p><p class="summary-value">${fmtBRL(monthEntradas)}</p></div>
       <div class="summary-card tone-brick"><div class="summary-icon">${ICONS.down}</div><p class="summary-label">Saídas do mês</p><p class="summary-value">${fmtBRL(monthSaidas)}</p></div>
       <div class="summary-card tone-gold"><div class="summary-icon">${ICONS.receipt}</div><p class="summary-label">Contas pendentes</p><p class="summary-value">${pendentesCard.length}</p></div>
@@ -1444,12 +1520,12 @@ function renderAccounts(){
   const inativas = accounts.filter(a => a.ativo === false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const sorted = [...ativas, ...inativas];
   lastAccountsListIds = sorted.map(a => a.id);
-  const totalAtivas = ativas.reduce((s,a) => s + balanceOf(a.id), 0);
+  const totalAtivas = ativas.reduce((s,a) => s + balanceOfToday(a.id), 0);
   const body = sorted.length ? `<div class="account-grid">${sorted.map((a, i) => {
     const ativa = a.ativo !== false;
     const typeColor = accountTypeColor(a.tipo);
     const sel = acctSelectMode && selectedAccounts.has(a.id);
-    const balance = balanceOf(a.id);
+    const balance = balanceOfToday(a.id);
     const balColor = accountBalanceBorderColor(balance);
     return `
     <div class="account-card ${ativa ? accountBalanceToneClass(balance) : 'inactive'} ${acctSelectMode ? 'select-mode' : ''} ${sel ? 'selected' : ''}" data-action="${acctSelectMode ? 'toggle-select-account' : 'open-account-statement'}" data-id="${a.id}" style="${ativa ? `border-left-color:${balColor};` : ''}">
@@ -1459,14 +1535,14 @@ function renderAccounts(){
       <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>`}
       <p class="muted small"><span class="type-dot" style="background:${ativa ? typeColor : '#B7AF98'}"></span>${esc(a.banco)||'—'} · ${esc(a.tipo)} ${ativa ? '' : '· <span class="inactive-tag">Inativa</span>'}</p>
       <h3>${esc(a.nome)}</h3>
-      <p class="account-balance" style="color:${ativa ? balColor : '#6B6553'}">${fmtBRL(balance)}</p>
+      <p class="account-balance ${balancesHidden?'balance-masked':''}" style="color:${ativa ? balColor : '#6B6553'}">${maskBalance(fmtBRL(balance))}</p>
     </div>`;
   }).join('')}</div>` : emptyState(ICONS.bank,'Nenhuma conta cadastrada','Cadastre suas contas bancárias para organizar seu dinheiro.');
 
   const statsRow = sorted.length ? `<div class="accounts-stats">
     <div><p class="muted small">Contas ativas</p><p class="stat-value">${ativas.length}</p></div>
     <div><p class="muted small">Contas inativas</p><p class="stat-value muted">${inativas.length}</p></div>
-    <div><p class="muted small">Saldo (ativas)</p><p class="stat-value" style="color:${totalAtivas<0?'#B3432B':'#1B4332'}">${fmtBRL(totalAtivas)}</p></div>
+    <div><p class="muted small">Saldo hoje (ativas)</p><p class="stat-value ${balancesHidden?'balance-masked':''}" style="color:${totalAtivas<0?'#B3432B':'#1B4332'}">${maskBalance(fmtBRL(totalAtivas))}</p></div>
   </div>` : '';
 
   return `<div class="stack">
@@ -1662,9 +1738,9 @@ function renderTransactions(){
   const inativos = accounts.filter(a => a.ativo === false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const sidebarItem = (a) => `
-    <button class="acct-chip ${a.ativo===false?'inactive':''} ${accountBalanceToneClass(balanceOf(a.id))} ${txFilterAccountId===a.id?'active':''}" data-action="filter-account" data-id="${a.id}">
+    <button class="acct-chip ${a.ativo===false?'inactive':''} ${accountBalanceToneClass(balanceOfToday(a.id))} ${txFilterAccountId===a.id?'active':''}" data-action="filter-account" data-id="${a.id}">
       ${esc(a.nome)}
-      <span class="acct-chip-balance">${fmtBRL(balanceOf(a.id))}</span>
+      <span class="acct-chip-balance ${balancesHidden?'balance-masked':''}">${maskBalance(fmtBRL(balanceOfToday(a.id)))}</span>
     </button>`;
 
   const sidebar = accounts.length ? `<aside class="tx-sidebar">
@@ -2311,6 +2387,11 @@ document.body.addEventListener('click', (e) => {
     }
   }
 
+  if(action === 'delete-category'){
+    removeCategoria(btn.dataset.tipo, btn.dataset.cat);
+    openCategoriesSheet();
+  }
+
   /* ---- seleção múltipla: transações ---- */
   if(action === 'toggle-select-mode-tx'){ txSelectMode = !txSelectMode; selectedTx.clear(); refreshTxListsAfterSelectionChange(); }
   if(action === 'toggle-select-tx'){
@@ -2598,6 +2679,48 @@ async function saveToCloud(){
 }
 
 /* =========================== import / export =========================== */
+function categoryChip(nome, tipo){
+  return `<span class="chip" style="display:inline-flex; align-items:center; gap:6px; margin:0 6px 6px 0;">
+    ${esc(nome)}
+    <button type="button" data-action="delete-category" data-tipo="${tipo}" data-cat="${esc(nome)}" style="background:none; border:none; color:var(--brick); font-weight:700; cursor:pointer; padding:0; line-height:1;">×</button>
+  </span>`;
+}
+
+function openCategoriesSheet(){
+  openModal(`
+    <p class="sheet-title">Gerenciar categorias</p>
+    <p class="muted small" style="margin:-6px 0 16px 0">Usadas ao lançar entradas e saídas. Excluir uma categoria não altera lançamentos já feitos com ela.</p>
+
+    <div class="field"><span>Categorias de entrada</span>
+      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_ENTRADA.map(c => categoryChip(c, 'entrada')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input type="text" id="newCatEntrada" placeholder="Nova categoria de entrada" style="flex:1;">
+        <button class="btn-ghost small" type="button" id="addCatEntradaBtn">Adicionar</button>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:16px;"><span>Categorias de saída</span>
+      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_SAIDA.map(c => categoryChip(c, 'saida')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input type="text" id="newCatSaida" placeholder="Nova categoria de saída" style="flex:1;">
+        <button class="btn-ghost small" type="button" id="addCatSaidaBtn">Adicionar</button>
+      </div>
+    </div>
+  `);
+  sheet.classList.add('sheet-compact');
+
+  const addBtn = (inputId, tipo, btnId) => {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if(!btn || !input) return;
+    const go = () => { if(addCategoria(tipo, input.value)) openCategoriesSheet(); };
+    btn.addEventListener('click', go);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); go(); } });
+  };
+  addBtn('newCatEntrada', 'entrada', 'addCatEntradaBtn');
+  addBtn('newCatSaida', 'saida', 'addCatSaidaBtn');
+}
+
 async function openDataSheet(){
   const changelogHtml = CHANGELOG.map(c => `
     <div class="changelog-entry">
@@ -2617,6 +2740,7 @@ async function openDataSheet(){
     <div class="field"><span>Importar arquivo (.json)</span><input type="file" id="importFile" accept="application/json,.json"></div>
     <button class="btn-primary" id="importBtn" type="button">Importar dados</button>
     <button class="btn-ghost" id="exportBtn" type="button" style="width:100%; margin-top:10px; text-align:center;">Exportar backup (.json)</button>
+    <button class="btn-ghost" id="openCategoriesBtn" type="button" style="width:100%; margin-top:10px; text-align:center;">Gerenciar categorias</button>
     <p class="muted small" id="importStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
@@ -2679,6 +2803,7 @@ async function openDataSheet(){
 
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
+  if (e.target.id === 'openCategoriesBtn' || e.target.closest('#openCategoriesBtn')) { openCategoriesSheet(); return; }
   if (e.target.id === 'syncNowTopBtn' || e.target.closest('#syncNowTopBtn')) { performCloudSync(true); return; }
   if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
 
@@ -2745,6 +2870,7 @@ const appLoadStart = Date.now();
 const MIN_LOADING_MS = 550;
 const MAX_CLOUD_SYNC_WAIT_MS = 25000;
 loadInitialState().then(async () => {
+  await loadCategorias();
   render();
   await loadSyncState();
   updateSyncBadge();
@@ -2761,6 +2887,20 @@ loadInitialState().then(async () => {
 }).catch(() => { hideLoadingScreen(); });
 // segurança: nunca deixa a animação presa na tela, mesmo se algo falhar
 setTimeout(hideLoadingScreen, MAX_CLOUD_SYNC_WAIT_MS + 5000);
+
+/* =========================== impedir que o botão voltar feche o app =========================== */
+// "Armadilha" de histórico: sempre que o navegador tentar voltar (botão voltar físico/gesto,
+// inclusive quando o WebViewer do Kodular repassa o botão voltar do Android como navegação
+// de página), a gente intercepta e decide o que fazer em vez de deixar sair do app:
+// 1) se algum modal/sheet estiver aberto, fecha ele;
+// 2) senão, apenas "recarrega a armadilha" e não sai de lugar nenhum.
+// Isso NÃO substitui o ajuste correspondente nos blocos do Kodular (Screen1.BackPressed) —
+// os dois juntos garantem que o botão físico nunca feche o app.
+history.pushState({ lcTrap: true }, '', location.href);
+window.addEventListener('popstate', () => {
+  history.pushState({ lcTrap: true }, '', location.href);
+  if(overlay.classList.contains('open')) closeModal();
+});
 
 /* =========================== PWA: service worker + install prompt =========================== */
 if ("serviceWorker" in navigator) {
