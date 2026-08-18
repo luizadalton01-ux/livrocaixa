@@ -373,6 +373,9 @@
       <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       </button>
+      <button id="syncNowTopBtn" class="icon-topbtn" title="Sincronizar com a nuvem agora">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
+      </button>
       <button id="diagAlarmBtn" class="icon-topbtn" title="Localizar transação">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </button>
@@ -414,8 +417,16 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.31.0';
 const CHANGELOG = [
+  { v: '1.31.0', data: '2026-08-14', mudancas: [
+    'Botão de sino removido; botão de lupa agora abre a busca de transações',
+    'Novo botão "Sincronizar" no topo (entre Exportar e Localizar)',
+    'Sincronização com a nuvem não é mais em tempo real: acontece 1x por dia (a partir das 7h) ou manualmente pelo botão',
+    'Busca de transações agora permite selecionar e excluir resultados, igual à aba Transações',
+    'Toque e segure em qualquer transação (extrato, Transações, busca) para selecioná-la rapidamente',
+    'Ao excluir um lançamento recorrente com ocorrências futuras, o app agora pergunta se deve excluir só esse ou também os futuros',
+  ]},
   { v: '1.27.0', data: '2026-08-10', mudancas: [
     'Cartões de conta (aba Contas) agora usam tom azul para saldo positivo e tom vermelho para saldo negativo, em vez de cor por tipo de conta',
     'Contas na barra lateral da aba Transações seguem a mesma cor (azul/vermelho conforme o saldo) da aba Contas',
@@ -664,6 +675,36 @@ let fbUnsubscribers = [];
 let fbFirstSnapshot = { accounts:false, bills:false, transactions:false };
 function fbAllFirstSnapshotsIn(){ return fbFirstSnapshot.accounts && fbFirstSnapshot.bills && fbFirstSnapshot.transactions; }
 
+// A sincronização com a nuvem NÃO é mais automática/contínua. Ela só acontece:
+// (1) uma vez por dia, a partir das 7h, sozinha; ou (2) quando a pessoa toca no botão
+// de sincronizar. Enquanto isso, exclusões feitas localmente ficam guardadas aqui até
+// a próxima sincronização, pra não se perderem.
+let lastCloudSyncAt = null;
+let pendingDeletes = { accounts: [], bills: [], transactions: [] };
+async function loadSyncState(){
+  try {
+    const stored = await idbGetAll();
+    lastCloudSyncAt = stored.lastCloudSyncAt || null;
+    pendingDeletes = stored.pendingDeletes || { accounts: [], bills: [], transactions: [] };
+  } catch(e){}
+}
+async function savePendingDeletes(){ try { await idbSet('pendingDeletes', pendingDeletes); } catch(e){} }
+function queueDelete(collectionName, id){
+  if(!pendingDeletes[collectionName]) pendingDeletes[collectionName] = [];
+  if(!pendingDeletes[collectionName].includes(id)) pendingDeletes[collectionName].push(id);
+  savePendingDeletes();
+}
+function queueDeletes(collectionName, ids){
+  if(!pendingDeletes[collectionName]) pendingDeletes[collectionName] = [];
+  ids.forEach(id => { if(!pendingDeletes[collectionName].includes(id)) pendingDeletes[collectionName].push(id); });
+  savePendingDeletes();
+}
+function unqueueDeletes(collectionName, ids){
+  if(!pendingDeletes[collectionName]) return;
+  pendingDeletes[collectionName] = pendingDeletes[collectionName].filter(id => !ids.includes(id));
+  savePendingDeletes();
+}
+
 async function loadFirebaseConfig(){
   try { const stored = await idbGetAll(); return stored.firebaseConfig || null; }
   catch(e){ return null; }
@@ -671,13 +712,26 @@ async function loadFirebaseConfig(){
 async function saveFirebaseConfig(configObj){ await idbSet('firebaseConfig', configObj); }
 async function clearFirebaseConfig(){ await idbSet('firebaseConfig', null); }
 
+function formatRelativeSync(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  if(sameDay) return `hoje às ${hh}:${mm}`;
+  const y = new Date(now); y.setDate(y.getDate()-1);
+  if(d.toDateString() === y.toDateString()) return `ontem às ${hh}:${mm}`;
+  return `em ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} às ${hh}:${mm}`;
+}
+
 function updateSyncBadge(){
   const el = document.getElementById('syncBadge');
   if(!el) return;
-  if(fbConnecting) el.textContent = '☁ Conectando...';
-  else if(fbReady) el.textContent = '☁ Sincronizado';
+  if(fbSyncing) el.textContent = '☁ Sincronizando...';
   else if(fbError) el.textContent = '⚠ Erro de sincronização';
-  else el.textContent = '';
+  else if(lastCloudSyncAt) el.textContent = '☁ Sincronizado ' + formatRelativeSync(lastCloudSyncAt);
+  else el.textContent = '☁ Ainda não sincronizado';
 }
 
 let fbInitPromise = null;
@@ -698,7 +752,9 @@ async function initFirebase(){
       await firebase.auth().signInAnonymously();
       fbReady = true;
       fbConnecting = false;
-      attachFirestoreListeners();
+      // Não liga os listeners em tempo real aqui — a sincronização agora acontece só
+      // sob demanda, dentro de performCloudSync(), que liga e desliga os listeners
+      // apenas durante a própria sincronização.
       updateSyncBadge();
     } catch(e){
       console.warn('Falha ao iniciar Firebase:', e);
@@ -759,9 +815,10 @@ async function fsSetDoc(collectionName, doc){
   catch(e){ console.warn(`Firestore: falha ao salvar em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsDeleteDoc(collectionName, id){
+  queueDelete(collectionName, id);
   await ensureFbSettled();
   if(!fbReady) return;
-  try { await fbDb.collection(collectionName).doc(id).delete(); }
+  try { await fbDb.collection(collectionName).doc(id).delete(); unqueueDeletes(collectionName, [id]); }
   catch(e){ console.warn(`Firestore: falha ao excluir em ${collectionName}`, e); fbError = true; updateSyncBadge(); }
 }
 async function fsBatchSet(collectionName, docs, onChunk){
@@ -781,13 +838,16 @@ async function fsBatchSet(collectionName, docs, onChunk){
   return { ok, fail };
 }
 async function fsBatchDelete(collectionName, ids){
+  queueDeletes(collectionName, ids);
   await ensureFbSettled();
   if(!fbReady || !ids.length) return;
   const CHUNK = 400;
   for(let i = 0; i < ids.length; i += CHUNK){
+    const chunk = ids.slice(i, i + CHUNK);
     const batch = fbDb.batch();
-    ids.slice(i, i + CHUNK).forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await batch.commit(); } catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
+    chunk.forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
+    try { await batch.commit(); unqueueDeletes(collectionName, chunk); }
+    catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); }
   }
 }
 async function fsCollectionCount(collectionName){
@@ -844,6 +904,73 @@ async function syncAllToFirebase(onProgress){
     releaseWakeLockSafe();
   }
   return true;
+}
+
+// Sincronização completa sob demanda: conecta, envia exclusões pendentes, envia o
+// estado local atual (upsert) e por fim busca dados da nuvem (ex: lançados em outro
+// aparelho) — tudo isso uma única vez, sem deixar conexão em tempo real ligada depois.
+// Chamada (1) automaticamente uma vez por dia a partir das 7h, ou (2) manualmente pelo
+// botão de sincronizar no topo do app.
+async function performCloudSync(manual){
+  if(fbSyncing) return;
+  const config = await loadFirebaseConfig();
+  if(!config || !config.apiKey){
+    if(manual) alert('Nenhuma conta de nuvem configurada. Toque em "Importar / exportar dados" para configurar a sincronização primeiro.');
+    return;
+  }
+  fbSyncing = true;
+  updateSyncBadge();
+  if(manual) showLoadingScreen('Conectando à nuvem…');
+  try{
+    await initFirebase();
+    if(!fbReady){
+      if(manual) alert('Não foi possível conectar à nuvem agora. Tente novamente mais tarde.');
+      return;
+    }
+
+    // 1) envia exclusões feitas localmente desde a última sincronização
+    for(const col of ['accounts','bills','transactions']){
+      const ids = (pendingDeletes[col] || []).slice();
+      if(ids.length){
+        if(manual) showLoadingScreen(`Enviando exclusões (${col})…`);
+        await fsBatchDelete(col, ids);
+      }
+    }
+
+    // 2) envia o estado local atual (cobre criações/edições feitas offline)
+    fbSyncing = true; // syncAllToFirebase mexe nessa flag também; garante que continue true até o fim
+    await syncAllToFirebase(manual ? (msg) => { if(msg) showLoadingScreen(msg); } : null);
+
+    // 3) busca dados da nuvem (ex: lançamentos feitos em outro aparelho) com um
+    // snapshot único, e desliga a escuta em seguida — sem tempo real.
+    if(manual) showLoadingScreen('Buscando dados novos da nuvem…');
+    attachFirestoreListeners();
+    await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
+    fbUnsubscribers.forEach(u => { try{ u(); }catch(e){} });
+    fbUnsubscribers = [];
+
+    lastCloudSyncAt = Date.now();
+    try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
+    fbReady = false; // volta a ficar "desconectado" até a próxima sincronização
+    persist();
+    render();
+    if(manual) alert('Sincronização concluída!');
+  } finally {
+    fbSyncing = false;
+    updateSyncBadge();
+    if(manual) hideLoadingScreen();
+  }
+}
+
+// Dispara a sincronização diária sozinha, uma vez por dia, a partir das 7h — nunca antes.
+async function maybeAutoSyncDaily(){
+  const config = await loadFirebaseConfig();
+  if(!config || !config.apiKey) return;
+  const now = new Date();
+  if(now.getHours() < 7) return;
+  const alreadyToday = lastCloudSyncAt && new Date(lastCloudSyncAt).toDateString() === now.toDateString();
+  if(alreadyToday) return;
+  await performCloudSync(false);
 }
 
 /* =========================== notificações de vencimento =========================== */
@@ -1417,7 +1544,10 @@ function openAccountStatement(accountId, presetMonth, presetYear){
   if(presetYear && !years.includes(presetYear)){ years.push(presetYear); years.sort((a,b) => b-a); }
   openModal(`
     <p class="sheet-title">Extrato · ${esc(acc.nome)}</p>
-    <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="margin-bottom:14px;">+ Nova transação nesta conta</button>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
+      <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="flex:1;">+ Nova transação nesta conta</button>
+      <button class="btn-ghost small" type="button" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>
+    </div>
     <div class="stmt-filters">
       <select id="stmtMonth">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
       <select id="stmtYear">${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
@@ -1431,6 +1561,7 @@ function renderStatementBody(){
   if(!acc) return '';
   const monthKey = `${stmtYear}-${String(stmtMonth).padStart(2,'0')}`;
   const items = transactions.filter(t => t.contaId === stmtAccountId && t.data.slice(0,7) === monthKey);
+  lastTxFilteredIds = items.map(t => t.id);
 
   const entradas = items.filter(t => t.tipo==='entrada').reduce((s,t) => s+t.valor, 0);
   const saidas = items.filter(t => t.tipo==='saida').reduce((s,t) => s+t.valor, 0);
@@ -1442,12 +1573,22 @@ function renderStatementBody(){
       <div><p class="muted small">Saldo do mês</p><p class="amount ${entradas-saidas>=0?'entrada':'saida'}">${fmtBRL(entradas-saidas)}</p></div>
     </div>`;
 
-  return summary + renderDayGroupedLedger(stmtAccountId, items);
+  const selBar = txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : '';
+  return summary + selBar + renderDayGroupedLedger(stmtAccountId, items, true);
 }
 
 function refreshStatementBody(){
   const box = document.getElementById('stmtResults');
   if(box) box.innerHTML = renderStatementBody();
+}
+
+// Atualiza a view certa depois de qualquer mudança de seleção/exclusão de transações,
+// já que extrato de conta e busca são modais que não fazem parte do render() principal.
+function refreshTxListsAfterSelectionChange(){
+  if(document.getElementById('stmtResults')){ refreshStatementBody(); return; }
+  const searchInput = document.getElementById('searchTxInput');
+  if(searchInput){ renderSearchResults(searchInput.value); return; }
+  render();
 }
 
 document.body.addEventListener('change', (e) => {
@@ -2171,16 +2312,16 @@ document.body.addEventListener('click', (e) => {
   }
 
   /* ---- seleção múltipla: transações ---- */
-  if(action === 'toggle-select-mode-tx'){ txSelectMode = !txSelectMode; selectedTx.clear(); render(); }
+  if(action === 'toggle-select-mode-tx'){ txSelectMode = !txSelectMode; selectedTx.clear(); refreshTxListsAfterSelectionChange(); }
   if(action === 'toggle-select-tx'){
     const id = btn.dataset.id;
     if(selectedTx.has(id)) selectedTx.delete(id); else selectedTx.add(id);
-    render();
+    refreshTxListsAfterSelectionChange();
   }
   if(action === 'select-all-tx'){
     if(selectedTx.size === lastTxFilteredIds.length) selectedTx.clear();
     else lastTxFilteredIds.forEach(id => selectedTx.add(id));
-    render();
+    refreshTxListsAfterSelectionChange();
   }
   if(action === 'bulk-delete-tx'){
     if(selectedTx.size === 0) return;
@@ -2203,6 +2344,7 @@ document.body.addEventListener('click', (e) => {
         transactions = transactions.filter(t => !finalIds.has(t.id));
         fsBatchDelete('transactions', idsArr);
         txSelectMode = false; selectedTx.clear();
+        closeModal();
         render();
       }
     };
@@ -2335,8 +2477,7 @@ document.body.addEventListener('pointerdown', (e) => {
     txSelectMode = true;
     selectedTx.add(row.dataset.id);
     if(navigator.vibrate) { try { navigator.vibrate(25); } catch(e){} }
-    if(document.getElementById('stmtResults')) refreshStatementBody();
-    else render();
+    refreshTxListsAfterSelectionChange();
   }, 500);
 });
 ['pointerup','pointerleave','pointercancel','scroll'].forEach(evt => {
@@ -2360,6 +2501,7 @@ function openSearchSheet(){
     <div class="field"><span>Buscar por descrição, categoria, conta ou valor</span>
       <input type="text" id="searchTxInput" placeholder="Ex: mercado, salário, aluguel, 150,00..." autofocus>
     </div>
+    <div id="searchSelectBar"></div>
     <div id="searchResults" class="ledger" style="margin-top:6px;"></div>
   `);
   renderSearchResults('');
@@ -2370,7 +2512,14 @@ function renderSearchResults(query){
   const box = document.getElementById('searchResults');
   if(!box) return;
   const q = query.trim().toLowerCase();
-  if(!q){ box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Digite para buscar entre ${transactions.length} transações.</p>`; return; }
+  const selectBar = document.getElementById('searchSelectBar');
+
+  if(!q){
+    box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Digite para buscar entre ${transactions.length} transações.</p>`;
+    lastTxFilteredIds = [];
+    if(selectBar) selectBar.innerHTML = '';
+    return;
+  }
 
   const accountName = (id) => { const a = accounts.find(x=>x.id===id); return a ? a.nome : ''; };
   // normaliza o valor buscado (aceita "150", "150,00", "150.00" ou "R$ 150,00")
@@ -2387,20 +2536,36 @@ function renderSearchResults(query){
     return false;
   }).sort((a,b) => b.data.localeCompare(a.data)).slice(0, 60);
 
+  lastTxFilteredIds = matches.map(t => t.id);
+
+  if(selectBar){
+    selectBar.innerHTML = matches.length ? `
+      <div style="display:flex; justify-content:flex-end; margin:6px 0;">
+        <button class="btn-ghost small" type="button" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>
+      </div>
+      ${txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : ''}
+    ` : '';
+  }
+
   if(!matches.length){ box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Nenhuma transação encontrada.</p>`; return; }
 
   box.innerHTML = `
     <p class="muted small" style="padding:4px 2px 8px 2px;">${matches.length}${matches.length===60?'+':''} resultado(s)</p>
-    ${matches.map(t => `
-    <div class="ledger-row clickable" data-action="edit-transaction" data-id="${t.id}">
-      <button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>
+    ${matches.map(t => {
+      const sel = txSelectMode && selectedTx.has(t.id);
+      return `
+    <div class="ledger-row clickable ${sel ? 'selected' : ''}" data-action="${txSelectMode ? 'toggle-select-tx' : 'edit-transaction'}" data-id="${t.id}">
+      ${txSelectMode
+        ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>`
+        : `<button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>`}
       <span class="dot ${t.tipo}"></span>
       <div class="ledger-main">
         <p class="ledger-desc">${esc(t.descricao)}</p>
         <p class="muted small">${fmtDate(t.data)} · ${esc(t.categoria)} · ${esc(accountName(t.contaId))}</p>
       </div>
       <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
-    </div>`).join('')}`;
+    </div>`;
+    }).join('')}`;
 }
 
 document.body.addEventListener('input', (e) => {
@@ -2442,8 +2607,8 @@ async function openDataSheet(){
 
   const existingConfig = await loadFirebaseConfig();
   const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
-  const statusLabel = fbConnecting ? 'Conectando...' : fbReady ? (fbError ? 'Conectado, com erros recentes ⚠' : 'Conectado ☁') : fbError ? 'Erro de conexão ⚠' : 'Não conectado';
-  const statusColor = fbConnecting ? 'var(--gold)' : fbReady && !fbError ? 'var(--ledger)' : 'var(--brick)';
+  const statusLabel = fbSyncing ? 'Sincronizando...' : lastCloudSyncAt ? `Sincronizado ${formatRelativeSync(lastCloudSyncAt)}` : existingConfig ? 'Configurado, ainda não sincronizado' : 'Não configurado';
+  const statusColor = fbSyncing ? 'var(--gold)' : fbError ? 'var(--brick)' : 'var(--ledger)';
   const localCounts = `${accounts.length} contas · ${transactions.length} transações · ${bills.length} contas a pagar (neste aparelho)`;
 
   openModal(`
@@ -2459,15 +2624,15 @@ async function openDataSheet(){
     <p class="muted small" style="margin:-6px 0 6px 0;">
       Status: <strong style="color:${statusColor}">${statusLabel}</strong><br>
       ${localCounts}<br>
-      Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real.
-      ${fbError ? '<br><strong style="color:var(--brick)">Se os dados não baterem entre aparelhos, toque em "Enviar dados" novamente sem sair do app até a confirmação aparecer.</strong>' : ''}
+      A sincronização não é mais em tempo real: ela acontece sozinha uma vez por dia (a partir das 7h) ou quando você toca em "Sincronizar" (no topo do app ou aqui embaixo).
+      ${fbError ? '<br><strong style="color:var(--brick)">Última sincronização teve falhas. Toque em "Sincronizar agora" novamente.</strong>' : ''}
     </p>
     <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
       <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
     </div>
-    <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e conectar</button>
+    <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e sincronizar</button>
     ${existingConfig ? `<button class="btn-ghost" id="removeFbConfigBtn" type="button" style="width:100%; margin-top:8px; text-align:center; color:var(--brick); border-color:var(--brick);">Desconectar</button>` : ''}
-    ${fbReady ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Enviar dados deste aparelho para a nuvem agora</button>` : ''}
+    ${existingConfig ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Sincronizar agora</button>` : ''}
     <p class="muted small" id="fbStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
@@ -2485,16 +2650,10 @@ async function openDataSheet(){
     try { parsed = JSON.parse(raw); }
     catch(e){ if(status) status.textContent = 'JSON inválido. Confira se copiou o objeto certinho, com aspas nas chaves.'; return; }
     if(!parsed.apiKey || !parsed.projectId){ if(status) status.textContent = 'Configuração incompleta (faltam apiKey/projectId).'; return; }
-    if(status) status.textContent = 'Conectando...';
-    showLoadingScreen('Conectando à nuvem…');
+    if(status) status.textContent = 'Conectando e sincronizando...';
     await saveFirebaseConfig(parsed);
-    await initFirebase();
-    if(fbReady){
-      showLoadingScreen('Sincronizando dados da nuvem…');
-      await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
-    }
-    hideLoadingScreen();
-    if(status) status.textContent = fbReady ? 'Conectado com sucesso!' : 'Não foi possível conectar. Confira a configuração e as regras do Firestore.';
+    await performCloudSync(true);
+    if(status) status.textContent = fbError ? 'Não foi possível conectar. Confira a configuração e as regras do Firestore.' : 'Conectado e sincronizado com sucesso!';
     render();
   });
 
@@ -2512,17 +2671,15 @@ async function openDataSheet(){
 
   const syncBtn = document.getElementById('syncNowBtn');
   if(syncBtn) syncBtn.addEventListener('click', async () => {
-    const status = document.getElementById('fbStatus');
     syncBtn.disabled = true;
-    showLoadingScreen('Enviando dados para a nuvem…');
-    await syncAllToFirebase((msg) => { if(status) status.textContent = msg; if(msg) showLoadingScreen(msg); });
-    hideLoadingScreen();
+    await performCloudSync(true);
     syncBtn.disabled = false;
   });
 }
 
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
+  if (e.target.id === 'syncNowTopBtn' || e.target.closest('#syncNowTopBtn')) { performCloudSync(true); return; }
   if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
 
   if (e.target.id === 'exportBtn') {
@@ -2551,14 +2708,11 @@ document.body.addEventListener('click', (e) => {
         bills = Array.isArray(data.bills) ? data.bills : [];
         accounts.forEach(a => { if (a.ativo === undefined) a.ativo = true; });
         migrateData();
+        persist();
         closeModal();
         render();
-        if(fbReady){
-          if(status) status.textContent = 'Enviando dados importados para a nuvem...';
-          showLoadingScreen('Enviando dados importados para a nuvem…');
-          await syncAllToFirebase((msg) => { if(msg) showLoadingScreen(msg); });
-          hideLoadingScreen();
-        }
+        const cfg = await loadFirebaseConfig();
+        if(cfg && cfg.apiKey){ await performCloudSync(true); }
       } catch (err) {
         if (status) status.textContent = 'Não foi possível importar: arquivo inválido.';
       }
@@ -2592,17 +2746,16 @@ const MIN_LOADING_MS = 550;
 const MAX_CLOUD_SYNC_WAIT_MS = 25000;
 loadInitialState().then(async () => {
   render();
-  const cloudConfig = await loadFirebaseConfig();
-  const hasCloudConfig = !!(cloudConfig && cloudConfig.apiKey);
-  initFirebase();
+  await loadSyncState();
+  updateSyncBadge();
   await loadNotifiedSlots();
   checkBillReminders();
-  setInterval(checkBillReminders, 15 * 60 * 1000);
-  if(hasCloudConfig){
-    showLoadingScreen('Sincronizando dados da nuvem…');
-    await waitCloudFirstSync(MAX_CLOUD_SYNC_WAIT_MS);
-  }
   syncAlarmsWithKodular();
+  // A sincronização com a nuvem NÃO acontece mais automaticamente ao abrir o app.
+  // Ela só roda sozinha uma vez por dia (a partir das 7h) ou quando a pessoa toca no
+  // botão de sincronizar no topo. As duas checagens abaixo cuidam disso.
+  maybeAutoSyncDaily();
+  setInterval(() => { checkBillReminders(); maybeAutoSyncDaily(); }, 15 * 60 * 1000);
   const elapsed = Date.now() - appLoadStart;
   setTimeout(hideLoadingScreen, Math.max(0, MIN_LOADING_MS - elapsed));
 }).catch(() => { hideLoadingScreen(); });
