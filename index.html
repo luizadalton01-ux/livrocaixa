@@ -425,8 +425,12 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.33.1';
+const APP_VERSION = '1.33.2';
 const CHANGELOG = [
+  { v: '1.33.2', data: '2026-08-14', mudancas: [
+    'Envio em lote voltou a ser sequencial (um de cada vez, como era até a v1.31.0) em vez de paralelo — rodar vários ao mesmo tempo disputava a banda da conexão móvel e causava falhas que não existiam antes',
+    'Tempo-limite por lote aumentado de 30s para 90s, só como rede de segurança contra travamento de verdade, sem cortar envios que só estavam demorando um pouco mais',
+  ]},
   { v: '1.33.1', data: '2026-08-14', mudancas: [
     'Corrigido: o botão "Sincronizar" ficava reenviando TODAS as transações de novo a cada clique, em vez de só as pendentes — agora só a configuração inicial da nuvem faz o envio completo (uma única vez); todo o resto é incremental',
   ]},
@@ -931,11 +935,14 @@ async function fsBatchSet(collectionName, docs, onChunk){
   const worker = async (chunk) => {
     const batch = fbDb.batch();
     chunk.forEach(d => batch.set(fbDb.collection(collectionName).doc(d.id), d));
-    try { await withTimeout(batch.commit(), 30000, 'timeout no envio em lote'); unqueueUpserts(collectionName, chunk.map(d => d.id)); return { ok: true }; }
+    // 90s de tempo-limite (rede de segurança, não deve disparar em uso normal) e um lote
+    // de cada vez (não em paralelo): rodar vários ao mesmo tempo pode disputar a banda
+    // limitada da conexão móvel e piorar tudo. Sequencial, como era antes, é mais confiável.
+    try { await withTimeout(batch.commit(), 90000, 'timeout no envio em lote'); unqueueUpserts(collectionName, chunk.map(d => d.id)); return { ok: true }; }
     catch(e){ console.warn('Firestore: falha no envio em lote', e); fbError = true; return { ok: false }; }
   };
   worker.onChunk = onChunk;
-  const result = await runChunksConcurrently(chunks, worker, 4);
+  const result = await runChunksConcurrently(chunks, worker, 1);
   updateSyncBadge();
   return result;
 }
@@ -950,10 +957,10 @@ async function fsBatchDelete(collectionName, ids){
   const worker = async (chunk) => {
     const batch = fbDb.batch();
     chunk.forEach(id => batch.delete(fbDb.collection(collectionName).doc(id)));
-    try { await withTimeout(batch.commit(), 30000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); return { ok: true }; }
+    try { await withTimeout(batch.commit(), 90000, 'timeout na exclusão em lote'); unqueueDeletes(collectionName, chunk); return { ok: true }; }
     catch(e){ console.warn('Firestore: falha na exclusão em lote', e); fbError = true; updateSyncBadge(); return { ok: false }; }
   };
-  await runChunksConcurrently(chunks, worker, 4);
+  await runChunksConcurrently(chunks, worker, 1);
 }
 async function fsCollectionCount(collectionName){
   await ensureFbSettled();
@@ -1091,7 +1098,7 @@ async function performCloudSync(manual){
       try { await idbSet('lastCloudSyncAt', lastCloudSyncAt); } catch(e){}
       render();
       if(manual) alert('Sincronização concluída!');
-    })(), 5 * 60 * 1000, 'timeout na sincronização');
+    })(), 25 * 60 * 1000, 'timeout na sincronização');
   } catch(e){
     console.warn('Sincronização não concluída:', e);
     fbError = true;
