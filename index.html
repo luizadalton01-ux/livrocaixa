@@ -174,11 +174,9 @@
   .ledger-main p.muted.small{ margin:1px 0 0 0; }
 
   .day-ledger{ display:flex; flex-direction:column; gap:8px; }
-  .day-block{ border-radius:10px; padding:7px 9px; }
-  .day-block.day-alt-0{ background:#EAF3FB; }
-  .day-block.day-alt-1{ background:#EAF3FB; }
-  .day-block .ledger-row{ border:1px solid rgba(22,35,58,0.16); border-radius:8px; padding:6px 8px; margin-bottom:4px; background:rgba(255,255,255,0.5); }
-  .day-block .ledger-row:last-child{ margin-bottom:0; border:1px solid rgba(22,35,58,0.16); }
+  .day-block{ border-radius:10px; padding:7px 9px; background:var(--paper-raised); border:1px solid var(--line); box-shadow:var(--shadow-sm); }
+  .day-block .ledger-row{ border:1px solid var(--line); border-radius:8px; padding:6px 8px; margin-bottom:4px; background:var(--paper-raised); }
+  .day-block .ledger-row:last-child{ margin-bottom:0; border:1px solid var(--line); }
   .day-label{ margin:0 0 2px 0; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:0.3px; text-transform:uppercase; }
   .day-balance{ margin:6px 0 0 0; font-size:11.5px; color:var(--muted); text-align:right; padding-top:6px; border-top:1px dashed rgba(22,35,58,0.15); }
   .day-balance .amount{ font-size:12px; }
@@ -430,8 +428,26 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.2';
+const APP_VERSION = '1.34.7';
 const CHANGELOG = [
+  { v: '1.34.7', data: '2026-08-19', mudancas: [
+    'Aba Transações: fundo dos cards de transação agora é branco, no mesmo estilo visual da aba "A pagar" (antes tinha um tom azulado)',
+  ]},
+  { v: '1.34.6', data: '2026-08-19', mudancas: [
+    'Lançamentos recorrentes: "Repetir indefinidamente" agora é uma opção dentro do próprio seletor de frequência (logo abaixo de "Anual"), em vez de uma caixa de seleção separada',
+  ]},
+  { v: '1.34.5', data: '2026-08-19', mudancas: [
+    'Aba Transações: removidos os botões "Mês" e "Ano" — os seletores de mês/ano ficam sempre visíveis, junto do filtro "Não consolidadas"',
+    'Configurações: removida a lista de mudanças de cada versão (mantido só o número da versão instalada)',
+    'Configurações: todos os botões da tela agora seguem o mesmo layout do botão "Importar dados"',
+  ]},
+  { v: '1.34.4', data: '2026-08-19', mudancas: [
+    'Aba Transações: removidos os filtros "Últimos 7 dias", "Todas/Entradas/Saídas", e os botões "Localizar" e "Selecionar" — os filtros restantes (Mês, Ano, Não consolidadas) agora ficam todos na mesma linha',
+    'Botão "Exportar dados" saiu da aba Transações e foi para Configurações, logo abaixo de "Importar dados"',
+  ]},
+  { v: '1.34.3', data: '2026-08-19', mudancas: [
+    'Visão geral: o quadro "Próximos vencimentos" agora mostra todas as transações vencidas e as que vencem nos próximos 7 dias, em vez de só as 5 mais próximas',
+  ]},
   { v: '1.34.2', data: '2026-08-19', mudancas: [
     'Corrigido: o painel de transações não consolidadas (Passadas/Futuras) na aba "A pagar" não estava respeitando o mês selecionado — agora filtra pelo mesmo mês escolhido no topo da aba',
   ]},
@@ -659,7 +675,7 @@ let billsMonth = null; // null = mês em curso
 let expandedGroups = new Set();
 let groupVisible = {};
 let txFilterAccountId = null;
-let txPeriod = { mode: 'recent' };
+let txPeriod = { month: null, year: null };
 let stmtAccountId = null;
 let stmtMonth = null;
 let stmtYear = null;
@@ -1526,7 +1542,7 @@ function renderDashboard(){
   const monthSaidas = transactions.filter(t => t.tipo==='saida' && t.data.slice(0,7)===thisMonth).reduce((s,t)=>s+t.valor,0);
   const pendentes = pendingItemsUnified();
   const pendentesCard = pendentes.filter(item => item.dueDate.slice(0,7) <= thisMonth);
-  const upcoming = [...pendentes].sort((a,b)=>a.dueDate.localeCompare(b.dueDate)).slice(0,5);
+  const upcoming = pendentes.filter(item => daysUntil(item.dueDate) <= 7).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
 
   const now = new Date();
   if(!pieChartPeriod) pieChartPeriod = { month: now.getMonth()+1, year: now.getFullYear() };
@@ -1801,16 +1817,12 @@ document.body.addEventListener('change', (e) => {
   if(e.target.id === 'txMonthSelect' || e.target.id === 'txYearSelect'){
     const m = document.getElementById('txMonthSelect');
     const y = document.getElementById('txYearSelect');
-    txPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
+    txPeriod = { month: parseInt(m.value,10), year: parseInt(y.value,10) };
     render();
   }
   if(e.target.id === 'billsMonthSelect'){
     billsMonth = parseInt(e.target.value,10);
     render(); return;
-  }
-  if(e.target.id === 'txYearOnlySelect'){
-    txPeriod = { mode:'year', year: parseInt(e.target.value,10) };
-    render();
   }
   if(e.target.id === 'pieMonthSelect' || e.target.id === 'pieYearSelect'){
     const m = document.getElementById('pieMonthSelect');
@@ -1821,12 +1833,6 @@ document.body.addEventListener('change', (e) => {
 });
 
 /* =========================== transactions =========================== */
-function last7DaysStart(){
-  const d = new Date();
-  d.setDate(d.getDate() - 6);
-  return d.toISOString().slice(0,10);
-}
-
 function renderDayGroupedLedgerMulti(items, hideEmptyMsg){
   if(!items.length) return hideEmptyMsg ? '' : emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
   const sorted = [...items].sort((a,b) => a.data.localeCompare(b.data));
@@ -1881,52 +1887,27 @@ function renderTransactions(){
     ${inativos.length ? `<div class="acct-sidebar-divider"></div>${inativos.map(sidebarItem).join('')}` : ''}
   </aside>` : '';
 
-  // filtro de período: últimos 7 dias (padrão), mês inteiro ou ano inteiro
+  // filtro de período: sempre por mês/ano (seletores), mais o filtro de não consolidadas
   const years = txAvailableYears();
   const now = new Date();
-  const selMonth = txPeriod.mode === 'month' ? (txPeriod.month || now.getMonth()+1) : now.getMonth()+1;
-  const selYear = (txPeriod.mode === 'month' || txPeriod.mode === 'year') ? (txPeriod.year || now.getFullYear()) : now.getFullYear();
+  const selMonth = txPeriod.month || now.getMonth()+1;
+  const selYear = txPeriod.year || now.getFullYear();
 
   const periodControls = `
-    <div class="period-row">
-      <button class="chip ${txPeriod.mode==='recent'?'active':''}" data-action="set-period-recent">Últimos 7 dias</button>
-      <button class="chip ${txPeriod.mode==='month'?'active':''}" data-action="set-period-month">Mês</button>
-      <button class="chip ${txPeriod.mode==='year'?'active':''}" data-action="set-period-year">Ano</button>
-    </div>
-    ${txPeriod.mode==='month' ? `<div class="period-row">
+    <div class="filter-row">
+      <button class="chip chip-warn ${filterConsolidado==='pendentes'?'active':''}" data-action="toggle-filter-consolidado">Não consolidadas</button>
       <select id="txMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
       <select id="txYearSelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
-    </div>` : ''}
-    ${txPeriod.mode==='year' ? `<div class="period-row">
-      <select id="txYearOnlySelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
-    </div>` : ''}`;
-
-  const tipoFilters = `<div class="filter-row">
-    ${['todos','entrada','saida'].map(f => `
-    <button class="chip ${filterTipo===f?'active':''}" data-action="filter-transactions" data-value="${f}">
-      ${f==='todos'?'Todas':f==='entrada'?'Entradas':'Saídas'}
-    </button>`).join('')}
-    <button class="chip chip-warn ${filterConsolidado==='pendentes'?'active':''}" data-action="toggle-filter-consolidado">Não consolidadas</button>
-  </div>`;
+    </div>`;
 
   // aplica filtros: conta > tipo > consolidado > período
   let filtered = transactions.filter(t => filterTipo==='todos' || t.tipo===filterTipo);
   if(txFilterAccountId) filtered = filtered.filter(t => t.contaId === txFilterAccountId);
   if(filterConsolidado === 'pendentes') filtered = filtered.filter(t => !t.consolidado);
-  if(txPeriod.mode === 'recent'){
-    const start = last7DaysStart();
-    filtered = filtered.filter(t => t.data >= start && t.data <= todayStr());
-  } else if(txPeriod.mode === 'year'){
-    const y = String(selYear);
-    filtered = filtered.filter(t => t.data.slice(0,4) === y);
-  } else {
-    const key = `${selYear}-${String(selMonth).padStart(2,'0')}`;
-    filtered = filtered.filter(t => t.data.slice(0,7) === key);
-  }
+  const key = `${selYear}-${String(selMonth).padStart(2,'0')}`;
+  filtered = filtered.filter(t => t.data.slice(0,7) === key);
 
-  const periodLabel = txPeriod.mode === 'recent' ? 'nos últimos 7 dias'
-    : txPeriod.mode === 'year' ? `em ${selYear}`
-    : `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
+  const periodLabel = `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
   const emptyExtra = `${txFilterAccountId ? ' nesta conta' : ''}${filterConsolidado==='pendentes' ? ' não consolidadas' : ''}`;
   lastTxFilteredIds = filtered.map(t => t.id);
   const ledgerHtml = filtered.length
@@ -1936,19 +1917,9 @@ function renderTransactions(){
   return `<div class="tx-layout">
     ${sidebar}
     <div class="tx-main">
-      <div class="section-head"><h2>Transações</h2>
-        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-          <button class="btn-ghost small" data-action="open-search">${ICONS.search}<span>Localizar</span></button>
-          <button class="btn-ghost small" data-action="save-cloud">${ICONS.cloud}<span>Exportar dados</span></button>
-          ${filtered.length ? `<button class="btn-ghost small" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
-        </div>
-      </div>
+      <div class="section-head"><h2>Transações</h2></div>
       ${warn}
-      <div class="filters-panel">
-        ${periodControls}
-        ${tipoFilters}
-      </div>
-      ${txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : ''}
+      ${periodControls}
       ${ledgerHtml}
     </div>
   </div>`;
@@ -2101,13 +2072,13 @@ function openTransactionForm(presetContaId){
           <option value="quadrimestre">Quadrimestral (a cada 4 meses)</option>
           <option value="semestre">Semestral (a cada 6 meses)</option>
           <option value="ano">Anual</option>
+          <option value="indefinido">Repetir indefinidamente</option>
         </select>
-        <label class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="indefinidoCheck"><span>Repetir indefinidamente (sem quantidade definida)</span></label>
         <div id="ocorrenciasFieldWrap">
           <span style="margin-top:10px; display:block;">Quantas vezes (incluindo esta)</span>
           <input type="number" name="ocorrencias" id="ocorrenciasInput" min="1" max="60" value="12">
         </div>
-        <p class="muted small" style="margin-top:6px;">As próximas datas são geradas automaticamente a partir da data acima. Lançamentos futuros ficam pendentes até a data chegar. No modo indefinido, o app gera um número grande de ocorrências futuras (aprox. 10 anos) para a frequência escolhida.</p>
+        <p class="muted small" style="margin-top:6px;">As próximas datas são geradas automaticamente a partir da data acima. Lançamentos futuros ficam pendentes até a data chegar. Em "Repetir indefinidamente", o app gera um número grande de ocorrências futuras (aprox. 10 anos, mensalmente).</p>
       </div>
 
       <button class="btn-primary" type="submit">Lançar</button>
@@ -2117,9 +2088,10 @@ function openTransactionForm(presetContaId){
     document.getElementById('recorrenciaFields').classList.toggle('hidden-field', !e.target.checked);
   });
 
-  document.getElementById('indefinidoCheck').addEventListener('change', (e) => {
-    document.getElementById('ocorrenciasFieldWrap').classList.toggle('hidden-field', e.target.checked);
-    document.getElementById('ocorrenciasInput').required = !e.target.checked;
+  document.getElementById('freqSelect').addEventListener('change', (e) => {
+    const indefinido = e.target.value === 'indefinido';
+    document.getElementById('ocorrenciasFieldWrap').classList.toggle('hidden-field', indefinido);
+    document.getElementById('ocorrenciasInput').required = !indefinido;
   });
 
   document.getElementById('tipoSeg').addEventListener('click', (e) => {
@@ -2378,10 +2350,9 @@ document.body.addEventListener('submit', (e) => {
     const returnTo = f.get('returnTo');
     const recorrente = document.getElementById('recorrenteCheck').checked;
     const freq = f.get('frequencia');
-    const indefinido = recorrente && document.getElementById('indefinidoCheck').checked;
-    const OCORRENCIAS_INDEFINIDO = { semana:520, mes:120, trimestre:40, quadrimestre:30, semestre:20, ano:10 };
+    const indefinido = recorrente && freq === 'indefinido';
     const ocorrencias = !recorrente ? 1
-      : indefinido ? (OCORRENCIAS_INDEFINIDO[freq] || 120)
+      : indefinido ? 120
       : Math.min(60, Math.max(1, parseInt(f.get('ocorrencias'),10) || 1));
     const today = todayStr();
     const newTxs = [];
@@ -2628,9 +2599,6 @@ document.body.addEventListener('click', (e) => {
   if(action === 'filter-transactions'){ filterTipo = btn.dataset.value; render(); }
   if(action === 'toggle-filter-consolidado'){ filterConsolidado = filterConsolidado === 'pendentes' ? 'todos' : 'pendentes'; render(); }
   if(action === 'filter-account'){ txFilterAccountId = btn.dataset.id || null; render(); }
-  if(action === 'set-period-recent'){ txPeriod = { mode:'recent' }; render(); }
-  if(action === 'set-period-month'){ const n = new Date(); txPeriod = { mode:'month', month: txPeriod.month || n.getMonth()+1, year: txPeriod.year || n.getFullYear() }; render(); }
-  if(action === 'set-period-year'){ const n = new Date(); txPeriod = { mode:'year', year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
   if(action === 'toggle-tx-group'){
     const id = btn.dataset.id;
@@ -2876,12 +2844,6 @@ function openCategoriesSheet(){
 }
 
 async function openDataSheet(){
-  const changelogHtml = CHANGELOG.map(c => `
-    <div class="changelog-entry">
-      <p class="changelog-version">v${c.v} <span class="muted small">· ${fmtDate(c.data)}</span></p>
-      <ul>${c.mudancas.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
-    </div>`).join('');
-
   const existingConfig = await loadFirebaseConfig();
   const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
   const statusLabel = fbConnecting ? 'Conectando...' : fbReady ? (fbError ? 'Conectado, com erros recentes ⚠' : 'Conectado ☁') : fbError ? 'Erro de conexão ⚠' : 'Não conectado';
@@ -2893,8 +2855,9 @@ async function openDataSheet(){
     <p class="muted small" style="margin:-6px 0 16px 0">Importar substitui todas as contas, transações e contas a pagar atuais pelas do arquivo.</p>
     <div class="field"><span>Importar arquivo (.json)</span><input type="file" id="importFile" accept="application/json,.json"></div>
     <button class="btn-primary" id="importBtn" type="button">Importar dados</button>
-    <button class="btn-ghost" id="exportBtn" type="button" style="width:100%; margin-top:10px; text-align:center;">Exportar backup (.json)</button>
-    <button class="btn-ghost" id="openCategoriesBtn" type="button" style="width:100%; margin-top:10px; text-align:center;">Gerenciar categorias</button>
+    <button class="btn-primary" data-action="save-cloud" type="button" style="margin-top:10px;">Exportar dados</button>
+    <button class="btn-primary" id="exportBtn" type="button" style="margin-top:10px;">Exportar backup (.json)</button>
+    <button class="btn-primary" id="openCategoriesBtn" type="button" style="margin-top:10px;">Gerenciar categorias</button>
     <p class="muted small" id="importStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
@@ -2909,14 +2872,13 @@ async function openDataSheet(){
       <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
     </div>
     <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e sincronizar</button>
-    ${existingConfig ? `<button class="btn-ghost" id="removeFbConfigBtn" type="button" style="width:100%; margin-top:8px; text-align:center; color:var(--brick); border-color:var(--brick);">Desconectar</button>` : ''}
-    ${existingConfig ? `<button class="btn-ghost" id="syncNowBtn" type="button" style="width:100%; margin-top:8px; text-align:center;">Sincronizar agora</button>` : ''}
+    ${existingConfig ? `<button class="btn-primary" id="removeFbConfigBtn" type="button" style="margin-top:10px; background:linear-gradient(135deg, var(--rose), var(--brick));">Desconectar</button>` : ''}
+    ${existingConfig ? `<button class="btn-primary" id="syncNowBtn" type="button" style="margin-top:10px;">Sincronizar agora</button>` : ''}
     <p class="muted small" id="fbStatus" style="margin-top:10px;"></p>
 
     <div class="sheet-divider"></div>
     <p class="sheet-title" style="font-size:15px;">Sobre esta versão</p>
-    <p class="muted small" style="margin:-8px 0 12px 0">Versão instalada: <strong style="color:var(--ink)">v${APP_VERSION}</strong></p>
-    <div class="changelog-list">${changelogHtml}</div>
+    <p class="muted small" style="margin:-8px 0 0 0">Versão instalada: <strong style="color:var(--ink)">v${APP_VERSION}</strong></p>
   `);
 
   const saveBtn = document.getElementById('saveFbConfigBtn');
