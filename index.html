@@ -107,11 +107,12 @@
   .small{ font-size:12px; }
 
   .reminder-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
-  .reminder-row{ display:flex; align-items:flex-start; gap:8px; padding:11px 2px; border-bottom:1px dashed var(--line); flex-wrap:wrap; }
+  .reminder-row{ display:flex; align-items:flex-start; gap:8px; padding:7px 2px; border-bottom:1px dashed var(--line); flex-wrap:wrap; }
   .reminder-row:last-child{ border-bottom:none; }
   .reminder-row.select-mode{ cursor:pointer; align-items:center; }
   .reminder-row.selected{ background:#EAF6EF; border-radius:8px; }
-  .reminder-desc{ margin:0; font-weight:500; font-size:13.5px; }
+  .reminder-desc{ margin:0; font-weight:500; font-size:13px; line-height:1.25; }
+  .reminder-row p.muted.small{ margin:1px 0 0 0; }
   .reminder-right{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .amount{ font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:600; white-space:nowrap; }
   .amount.entrada{ color:var(--ledger); }
@@ -158,7 +159,7 @@
   .account-card .icon-btn.toggle-acct:hover{ color:var(--ledger); }
 
   .ledger{ list-style:none; margin:0; padding:0; }
-  .ledger-row{ display:flex; align-items:center; gap:9px; padding:11px 2px; border-bottom:1px solid var(--line); }
+  .ledger-row{ display:flex; align-items:center; gap:9px; padding:7px 2px; border-bottom:1px solid var(--line); }
   .ledger-row:last-child{ border-bottom:none; }
   .ledger-row.clickable{ cursor:pointer; }
   .ledger-row.clickable:active{ background:#F1EEE3; }
@@ -167,13 +168,14 @@
   .dot.entrada{ background:var(--ledger); }
   .dot.saida{ background:var(--brick); }
   .ledger-main{ flex:1; min-width:0; }
-  .ledger-desc{ margin:0; font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ledger-desc{ margin:0; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; }
+  .ledger-main p.muted.small{ margin:1px 0 0 0; }
 
-  .day-ledger{ display:flex; flex-direction:column; gap:10px; }
-  .day-block{ border-radius:10px; padding:8px 10px; }
+  .day-ledger{ display:flex; flex-direction:column; gap:8px; }
+  .day-block{ border-radius:10px; padding:7px 9px; }
   .day-block.day-alt-0{ background:#EAF3FB; }
   .day-block.day-alt-1{ background:#EAF3FB; }
-  .day-block .ledger-row{ border:1px solid rgba(22,35,58,0.16); border-radius:8px; padding:10px 8px; margin-bottom:6px; background:rgba(255,255,255,0.5); }
+  .day-block .ledger-row{ border:1px solid rgba(22,35,58,0.16); border-radius:8px; padding:6px 8px; margin-bottom:4px; background:rgba(255,255,255,0.5); }
   .day-block .ledger-row:last-child{ margin-bottom:0; border:1px solid rgba(22,35,58,0.16); }
   .day-label{ margin:0 0 2px 0; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:0.3px; text-transform:uppercase; }
   .day-balance{ margin:6px 0 0 0; font-size:11.5px; color:var(--muted); text-align:right; padding-top:6px; border-top:1px dashed rgba(22,35,58,0.15); }
@@ -228,11 +230,11 @@
 
   /* ---- bottom nav ---- */
   .bottomnav{ position:fixed; bottom:0; left:0; right:0; background:var(--paper-raised); border-top:1px solid var(--line);
-    display:flex; padding:6px 6px calc(env(safe-area-inset-bottom,0px) + 2px) 6px; gap:4px; z-index:20; }
+    display:flex; padding:6px 4px calc(env(safe-area-inset-bottom,0px) + 2px) 4px; gap:2px; z-index:20; }
   .nav-btn{ flex:1; background:none; border:none; border-radius:12px; display:flex; flex-direction:column; align-items:center; gap:3px;
-    padding:8px 2px; color:var(--muted); font-size:10.5px; font-family:'Inter',sans-serif; transition:background 0.15s ease, color 0.15s ease; }
+    padding:8px 1px; color:var(--muted); font-size:9.5px; font-family:'Inter',sans-serif; transition:background 0.15s ease, color 0.15s ease; }
   .nav-btn.active{ color:var(--ledger); background:#1B433216; font-weight:600; }
-  .nav-btn svg{ width:20px; height:20px; }
+  .nav-btn svg{ width:19px; height:19px; }
 
   /* ---- modal / bottom sheet ---- */
   .modal-overlay{ position:fixed; inset:0; background:rgba(22,35,58,0.45); z-index:30; display:flex; align-items:flex-end;
@@ -373,9 +375,6 @@
         <h1>Livro-Caixa <span id="versionBadge" class="version-badge"></span></h1>
         <p>entradas, saídas e contas <span id="syncBadge" class="sync-badge"></span></p>
       </div>
-      <button id="dataBtn" class="icon-topbtn" title="Importar / exportar dados">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-      </button>
       <button id="syncNowTopBtn" class="icon-topbtn" title="Sincronizar com a nuvem agora">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
       </button>
@@ -416,6 +415,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
       A pagar
     </button>
+    <button class="nav-btn" id="settingsNavBtn" title="Configurações">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Configurações
+    </button>
   </nav>
 </div>
 
@@ -425,8 +428,17 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.33.3';
+const APP_VERSION = '1.34.0';
 const CHANGELOG = [
+  { v: '1.34.0', data: '2026-08-19', mudancas: [
+    'Aba "A pagar": removido texto de instrução no painel de transações não consolidadas, e adicionado filtro por mês (além de pendentes/pagas/todas)',
+    'Edição de transação: categoria e conta agora aparecem em ordem alfabética nos filtros',
+    'Lançamentos recorrentes: nova opção "Repetir indefinidamente" além de escolher a quantidade de vezes',
+    'Botão de importar/exportar dados saiu do topo do app e virou um ícone de engrenagem "Configurações" no rodapé, ao lado de "A pagar"',
+    'Ocultar saldos agora também esconde os valores de "Entradas do mês" e "Saídas do mês" na Visão geral',
+    'App agora funciona offline: um service worker guarda a página em cache e a abre normalmente sem internet',
+    'Cards mais compactos em "Próximos vencimentos" e na lista de transações, para caber mais itens na tela',
+  ]},
   { v: '1.33.3', data: '2026-08-14', mudancas: [
     'Removidos todos os tempos-limite artificiais e o paralelismo do envio de dados — volta ao comportamento simples e direto de antes das v1.32.x, pra isolar se a lentidão vem do app ou da rede/Firestore',
     'Mensagens de progresso da sincronização agora mostram quanto tempo cada lote de 400 registros está levando de verdade',
@@ -633,6 +645,7 @@ let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
 let longPressTimer = null, longPressTriggered = false;
 let billSelectMode = false, selectedBills = new Set(), lastBillsListIds = [];
 let filterBills = 'pendentes';
+let billsPeriod = { mode: 'todos' };
 let expandedGroups = new Set();
 let groupVisible = {};
 let txFilterAccountId = null;
@@ -1526,8 +1539,8 @@ function renderDashboard(){
   return `<div class="stack">
     <section class="cards">
       <div class="summary-card tone-ink"><div class="summary-icon">${ICONS.wallet}</div><p class="summary-label">Saldo total</p><p class="summary-value ${balancesHidden?'balance-masked':''}">${maskBalance(fmtBRL(totalBalance()))}</p></div>
-      <div class="summary-card tone-green"><div class="summary-icon">${ICONS.up}</div><p class="summary-label">Entradas do mês</p><p class="summary-value">${fmtBRL(monthEntradas)}</p></div>
-      <div class="summary-card tone-brick"><div class="summary-icon">${ICONS.down}</div><p class="summary-label">Saídas do mês</p><p class="summary-value">${fmtBRL(monthSaidas)}</p></div>
+      <div class="summary-card tone-green"><div class="summary-icon">${ICONS.up}</div><p class="summary-label">Entradas do mês</p><p class="summary-value ${balancesHidden?'balance-masked':''}">${maskBalance(fmtBRL(monthEntradas))}</p></div>
+      <div class="summary-card tone-brick"><div class="summary-icon">${ICONS.down}</div><p class="summary-label">Saídas do mês</p><p class="summary-value ${balancesHidden?'balance-masked':''}">${maskBalance(fmtBRL(monthSaidas))}</p></div>
       <div class="summary-card tone-gold"><div class="summary-icon">${ICONS.receipt}</div><p class="summary-label">Contas pendentes</p><p class="summary-value">${pendentesCard.length}</p></div>
     </section>
 
@@ -1781,6 +1794,12 @@ document.body.addEventListener('change', (e) => {
     txPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
     render();
   }
+  if(e.target.id === 'billsMonthSelect' || e.target.id === 'billsYearSelect'){
+    const m = document.getElementById('billsMonthSelect');
+    const y = document.getElementById('billsYearSelect');
+    billsPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
+    render(); return;
+  }
   if(e.target.id === 'txYearOnlySelect'){
     txPeriod = { mode:'year', year: parseInt(e.target.value,10) };
     render();
@@ -1928,8 +1947,30 @@ function renderTransactions(){
 }
 
 /* =========================== bills =========================== */
+function billsAvailableYears(){
+  const years = new Set(bills.map(b => parseInt(b.vencimento.slice(0,4), 10)));
+  years.add(new Date().getFullYear());
+  return [...years].sort((a,b) => b-a);
+}
+
 function renderBills(){
+  const now = new Date();
+  const billsSelMonth = billsPeriod.month || now.getMonth()+1;
+  const billsSelYear = billsPeriod.year || now.getFullYear();
+  const billsYears = billsAvailableYears();
+
+  const monthFilterControls = `
+    <div class="filter-row">
+      <button class="chip ${billsPeriod.mode==='todos'?'active':''}" data-action="set-bills-period-todos">Todos os meses</button>
+      <button class="chip ${billsPeriod.mode==='month'?'active':''}" data-action="set-bills-period-month">Mês</button>
+    </div>
+    ${billsPeriod.mode==='month' ? `<div class="period-row">
+      <select id="billsMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
+      <select id="billsYearSelect">${billsYears.map(y => `<option value="${y}" ${y===billsSelYear?'selected':''}>${y}</option>`).join('')}</select>
+    </div>` : ''}`;
+
   const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
+    .filter(b => billsPeriod.mode !== 'month' || b.vencimento.slice(0,7) === `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`)
     .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
   lastBillsListIds = list.map(b => b.id);
 
@@ -1977,7 +2018,6 @@ function renderBills(){
   const naoConsolidadasPanel = `
     <div class="panel">
       <h2>Transações não consolidadas</h2>
-      <p class="muted small" style="margin:-6px 0 14px 0;">Lançamentos ainda não confirmados como efetivados no banco — passados e futuros. Toque na bolinha para marcar como consolidada.</p>
       <p class="muted small" style="font-weight:600; margin-bottom:4px;">Passadas (${passadas.length})</p>
       ${renderDayGroupedLedgerMulti(passadas)}
       <p class="muted small" style="font-weight:600; margin:18px 0 4px 0;">Futuras (${futuras.length})</p>
@@ -1990,7 +2030,10 @@ function renderBills(){
     </div>
     ${billSelectMode ? selectionBar(selectedBills.size, lastBillsListIds.length, 'bulk-delete-bills', 'toggle-select-mode-bills', 'select-all-bills', 'conta', 'contas') : ''}
     ${notifHtml}
-    ${filters}
+    <div class="filters-panel">
+      ${monthFilterControls}
+      ${filters}
+    </div>
     ${body}
     ${naoConsolidadasPanel}
   </div>`;
@@ -2068,9 +2111,12 @@ function openTransactionForm(presetContaId){
           <option value="semestre">Semestral (a cada 6 meses)</option>
           <option value="ano">Anual</option>
         </select>
-        <span style="margin-top:10px; display:block;">Quantas vezes (incluindo esta)</span>
-        <input type="number" name="ocorrencias" min="1" max="60" value="12">
-        <p class="muted small" style="margin-top:6px;">As próximas datas são geradas automaticamente a partir da data acima. Lançamentos futuros ficam pendentes até a data chegar.</p>
+        <label class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="indefinidoCheck"><span>Repetir indefinidamente (sem quantidade definida)</span></label>
+        <div id="ocorrenciasFieldWrap">
+          <span style="margin-top:10px; display:block;">Quantas vezes (incluindo esta)</span>
+          <input type="number" name="ocorrencias" id="ocorrenciasInput" min="1" max="60" value="12">
+        </div>
+        <p class="muted small" style="margin-top:6px;">As próximas datas são geradas automaticamente a partir da data acima. Lançamentos futuros ficam pendentes até a data chegar. No modo indefinido, o app gera um número grande de ocorrências futuras (aprox. 10 anos) para a frequência escolhida.</p>
       </div>
 
       <button class="btn-primary" type="submit">Lançar</button>
@@ -2078,6 +2124,11 @@ function openTransactionForm(presetContaId){
 
   document.getElementById('recorrenteCheck').addEventListener('change', (e) => {
     document.getElementById('recorrenciaFields').classList.toggle('hidden-field', !e.target.checked);
+  });
+
+  document.getElementById('indefinidoCheck').addEventListener('change', (e) => {
+    document.getElementById('ocorrenciasFieldWrap').classList.toggle('hidden-field', e.target.checked);
+    document.getElementById('ocorrenciasInput').required = !e.target.checked;
   });
 
   document.getElementById('tipoSeg').addEventListener('click', (e) => {
@@ -2160,8 +2211,9 @@ function openEditTransactionForm(txId){
   const t = transactions.find(x => x.id === txId);
   if(!t) return;
   const baseCats = t.tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA;
-  const categorias = baseCats.includes(t.categoria) ? baseCats : [t.categoria, ...baseCats];
-  const activeAccs = accounts.filter(a => a.ativo !== false || a.id === t.contaId);
+  const categorias = (baseCats.includes(t.categoria) ? baseCats : [t.categoria, ...baseCats])
+    .slice().sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const activeAccs = accounts.filter(a => a.ativo !== false || a.id === t.contaId).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   let origemId = t.contaId, destinoId = '';
   if(t.transferId){
@@ -2171,7 +2223,8 @@ function openEditTransactionForm(txId){
     origemId = fromTx ? fromTx.contaId : t.contaId;
     destinoId = toTx ? toTx.contaId : '';
   }
-  const contaOptions = accounts.filter(a => a.ativo !== false || a.id === origemId || a.id === destinoId);
+  const contaOptions = accounts.filter(a => a.ativo !== false || a.id === origemId || a.id === destinoId)
+    .sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const tipoInicial = t.transferId ? 'transferencia' : t.tipo;
 
   openModal(`
@@ -2226,7 +2279,7 @@ function openEditTransactionForm(txId){
       contaLabel.textContent = 'Conta';
       destSelect.required = false;
       const sel = document.getElementById('editCatSelect');
-      sel.innerHTML = (tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA).map(c => `<option>${esc(c)}</option>`).join('');
+      sel.innerHTML = (tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA).slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c => `<option>${esc(c)}</option>`).join('');
     }
   });
 
@@ -2334,7 +2387,11 @@ document.body.addEventListener('submit', (e) => {
     const returnTo = f.get('returnTo');
     const recorrente = document.getElementById('recorrenteCheck').checked;
     const freq = f.get('frequencia');
-    const ocorrencias = recorrente ? Math.min(60, Math.max(1, parseInt(f.get('ocorrencias'),10) || 1)) : 1;
+    const indefinido = recorrente && document.getElementById('indefinidoCheck').checked;
+    const OCORRENCIAS_INDEFINIDO = { semana:520, mes:120, trimestre:40, quadrimestre:30, semestre:20, ano:10 };
+    const ocorrencias = !recorrente ? 1
+      : indefinido ? (OCORRENCIAS_INDEFINIDO[freq] || 120)
+      : Math.min(60, Math.max(1, parseInt(f.get('ocorrencias'),10) || 1));
     const today = todayStr();
     const newTxs = [];
 
@@ -2392,6 +2449,7 @@ document.body.addEventListener('submit', (e) => {
 
 /* =========================== delegated actions =========================== */
 document.body.addEventListener('click', (e) => {
+  if(e.target.id === 'settingsNavBtn' || e.target.closest('#settingsNavBtn')){ openDataSheet(); return; }
   const navBtn = e.target.closest('.nav-btn');
   if(navBtn){
     activeTab = navBtn.dataset.tab;
@@ -2583,6 +2641,8 @@ document.body.addEventListener('click', (e) => {
   if(action === 'set-period-month'){ const n = new Date(); txPeriod = { mode:'month', month: txPeriod.month || n.getMonth()+1, year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'set-period-year'){ const n = new Date(); txPeriod = { mode:'year', year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
+  if(action === 'set-bills-period-todos'){ billsPeriod = { mode:'todos' }; render(); }
+  if(action === 'set-bills-period-month'){ const n = new Date(); billsPeriod = { mode:'month', month: billsPeriod.month || n.getMonth()+1, year: billsPeriod.year || n.getFullYear() }; render(); }
   if(action === 'toggle-tx-group'){
     const id = btn.dataset.id;
     if(expandedGroups.has(id)) expandedGroups.delete(id); else expandedGroups.add(id);
@@ -2920,7 +2980,6 @@ async function openDataSheet(){
 }
 
 document.body.addEventListener('click', (e) => {
-  if (e.target.id === 'dataBtn' || e.target.closest('#dataBtn')) { openDataSheet(); return; }
   if (e.target.id === 'openCategoriesBtn' || e.target.closest('#openCategoriesBtn')) { openCategoriesSheet(); return; }
   if (e.target.id === 'syncNowTopBtn' || e.target.closest('#syncNowTopBtn')) { performCloudSync(true); return; }
   if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
