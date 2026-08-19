@@ -124,7 +124,9 @@
   .section-head{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
   .section-head h2{ font-family:'Fraunces',serif; font-size:18px; font-weight:600; margin:0; }
 
-  .filter-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .filter-row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .filter-row select{ font-family:'Inter',sans-serif; font-size:12px; padding:6px 8px; border:1px solid var(--line);
+    border-radius:20px; background:var(--paper-raised); color:var(--ink); }
   .notif-status{ margin:-4px 0 4px 0; }
   .filters-panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:12px;
     display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow-sm); }
@@ -428,8 +430,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.34.1';
 const CHANGELOG = [
+  { v: '1.34.1', data: '2026-08-19', mudancas: [
+    'Aba "A pagar": filtros de status e o seletor de mês agora ficam todos na mesma linha',
+    'Removidos os botões "Todos os meses" e "Mês" — agora só existe o seletor de mês, sempre ativo e já iniciando no mês em curso',
+    'Removidos os textos de aviso/instrução da aba "A pagar" (lista vazia, painel de não consolidadas e seus estados vazios)',
+  ]},
   { v: '1.34.0', data: '2026-08-19', mudancas: [
     'Aba "A pagar": removido texto de instrução no painel de transações não consolidadas, e adicionado filtro por mês (além de pendentes/pagas/todas)',
     'Edição de transação: categoria e conta agora aparecem em ordem alfabética nos filtros',
@@ -645,7 +652,7 @@ let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
 let longPressTimer = null, longPressTriggered = false;
 let billSelectMode = false, selectedBills = new Set(), lastBillsListIds = [];
 let filterBills = 'pendentes';
-let billsPeriod = { mode: 'todos' };
+let billsMonth = null; // null = mês em curso
 let expandedGroups = new Set();
 let groupVisible = {};
 let txFilterAccountId = null;
@@ -1794,10 +1801,8 @@ document.body.addEventListener('change', (e) => {
     txPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
     render();
   }
-  if(e.target.id === 'billsMonthSelect' || e.target.id === 'billsYearSelect'){
-    const m = document.getElementById('billsMonthSelect');
-    const y = document.getElementById('billsYearSelect');
-    billsPeriod = { mode:'month', month: parseInt(m.value,10), year: parseInt(y.value,10) };
+  if(e.target.id === 'billsMonthSelect'){
+    billsMonth = parseInt(e.target.value,10);
     render(); return;
   }
   if(e.target.id === 'txYearOnlySelect'){
@@ -1819,8 +1824,8 @@ function last7DaysStart(){
   return d.toISOString().slice(0,10);
 }
 
-function renderDayGroupedLedgerMulti(items){
-  if(!items.length) return emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
+function renderDayGroupedLedgerMulti(items, hideEmptyMsg){
+  if(!items.length) return hideEmptyMsg ? '' : emptyState(ICONS.empty1, 'Nenhuma transação', 'Sem lançamentos neste período.');
   const sorted = [...items].sort((a,b) => a.data.localeCompare(b.data));
   const days = [];
   sorted.forEach(t => {
@@ -1947,30 +1952,13 @@ function renderTransactions(){
 }
 
 /* =========================== bills =========================== */
-function billsAvailableYears(){
-  const years = new Set(bills.map(b => parseInt(b.vencimento.slice(0,4), 10)));
-  years.add(new Date().getFullYear());
-  return [...years].sort((a,b) => b-a);
-}
-
 function renderBills(){
   const now = new Date();
-  const billsSelMonth = billsPeriod.month || now.getMonth()+1;
-  const billsSelYear = billsPeriod.year || now.getFullYear();
-  const billsYears = billsAvailableYears();
-
-  const monthFilterControls = `
-    <div class="filter-row">
-      <button class="chip ${billsPeriod.mode==='todos'?'active':''}" data-action="set-bills-period-todos">Todos os meses</button>
-      <button class="chip ${billsPeriod.mode==='month'?'active':''}" data-action="set-bills-period-month">Mês</button>
-    </div>
-    ${billsPeriod.mode==='month' ? `<div class="period-row">
-      <select id="billsMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
-      <select id="billsYearSelect">${billsYears.map(y => `<option value="${y}" ${y===billsSelYear?'selected':''}>${y}</option>`).join('')}</select>
-    </div>` : ''}`;
+  const billsSelMonth = billsMonth || (now.getMonth()+1);
+  const billsSelYear = now.getFullYear();
 
   const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
-    .filter(b => billsPeriod.mode !== 'month' || b.vencimento.slice(0,7) === `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`)
+    .filter(b => b.vencimento.slice(0,7) === `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`)
     .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
   lastBillsListIds = list.map(b => b.id);
 
@@ -1983,10 +1971,13 @@ function renderBills(){
     ? `<p class="muted small notif-status">🔕 Notificações bloqueadas nas configurações do navegador. Ative manualmente para receber avisos de vencimento.</p>`
     : `<button class="btn-ghost" data-action="enable-notifications" style="margin-bottom:2px;">🔔 Ativar notificações de vencimento</button>`;
 
-  const filters = `<div class="filter-row">${['pendentes','pagas','todas'].map(f => `
+  const filters = `<div class="filter-row">
+    ${['pendentes','pagas','todas'].map(f => `
     <button class="chip ${filterBills===f?'active':''}" data-action="filter-bills" data-value="${f}">
       ${f[0].toUpperCase()+f.slice(1)}
-    </button>`).join('')}</div>`;
+    </button>`).join('')}
+    <select id="billsMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
+  </div>`;
 
   const body = list.length ? `<ul class="reminder-list">${list.map(b => {
     const status = billStatus(b); const [label,color] = stampLabel(status); const d = daysUntil(b.vencimento);
@@ -2007,7 +1998,7 @@ function renderBills(){
         <button class="icon-btn danger" data-action="delete-bill" data-id="${b.id}">${ICONS.trash}</button>` : ''}
       </div>
     </li>`;
-  }).join('')}</ul>` : emptyState(ICONS.receipt,'Nada por aqui','Cadastre contas a pagar para acompanhar vencimentos.');
+  }).join('')}</ul>` : '';
 
   // transações lançadas que ainda não foram consolidadas (passadas e futuras)
   const hoje = todayStr();
@@ -2017,11 +2008,10 @@ function renderBills(){
 
   const naoConsolidadasPanel = `
     <div class="panel">
-      <h2>Transações não consolidadas</h2>
       <p class="muted small" style="font-weight:600; margin-bottom:4px;">Passadas (${passadas.length})</p>
-      ${renderDayGroupedLedgerMulti(passadas)}
+      ${renderDayGroupedLedgerMulti(passadas, true)}
       <p class="muted small" style="font-weight:600; margin:18px 0 4px 0;">Futuras (${futuras.length})</p>
-      ${renderDayGroupedLedgerMulti(futuras)}
+      ${renderDayGroupedLedgerMulti(futuras, true)}
     </div>`;
 
   return `<div class="stack">
@@ -2030,10 +2020,7 @@ function renderBills(){
     </div>
     ${billSelectMode ? selectionBar(selectedBills.size, lastBillsListIds.length, 'bulk-delete-bills', 'toggle-select-mode-bills', 'select-all-bills', 'conta', 'contas') : ''}
     ${notifHtml}
-    <div class="filters-panel">
-      ${monthFilterControls}
-      ${filters}
-    </div>
+    ${filters}
     ${body}
     ${naoConsolidadasPanel}
   </div>`;
@@ -2641,8 +2628,6 @@ document.body.addEventListener('click', (e) => {
   if(action === 'set-period-month'){ const n = new Date(); txPeriod = { mode:'month', month: txPeriod.month || n.getMonth()+1, year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'set-period-year'){ const n = new Date(); txPeriod = { mode:'year', year: txPeriod.year || n.getFullYear() }; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
-  if(action === 'set-bills-period-todos'){ billsPeriod = { mode:'todos' }; render(); }
-  if(action === 'set-bills-period-month'){ const n = new Date(); billsPeriod = { mode:'month', month: billsPeriod.month || n.getMonth()+1, year: billsPeriod.year || n.getFullYear() }; render(); }
   if(action === 'toggle-tx-group'){
     const id = btn.dataset.id;
     if(expandedGroups.has(id)) expandedGroups.delete(id); else expandedGroups.add(id);
