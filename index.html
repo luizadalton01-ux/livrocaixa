@@ -378,9 +378,6 @@
         <h1>Livro-Caixa <span id="versionBadge" class="version-badge"></span></h1>
         <p>entradas, saídas e contas <span id="syncBadge" class="sync-badge"></span></p>
       </div>
-      <button id="syncNowTopBtn" class="icon-topbtn" title="Sincronizar com a nuvem agora">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
-      </button>
       <button id="diagAlarmBtn" class="icon-topbtn" title="Localizar transação">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </button>
@@ -431,8 +428,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.10';
+const APP_VERSION = '1.34.11';
 const CHANGELOG = [
+  { v: '1.34.11', data: '2026-08-19', mudancas: [
+    'Removido o botão de sincronização do topo do app (era idêntico ao "Sincronizar agora" em Configurações)',
+    'Botão "Salvar e sincronizar" renomeado para "Salvar configurações na nuvem"',
+    'Configurações: campo "Configuração do Firebase" agora fica escondido atrás de uma caixa de seleção "Mostrar campo"',
+  ]},
   { v: '1.34.10', data: '2026-08-19', mudancas: [
     'Aba Contas: botões de editar/excluir/ativar-inativar dos cards agora ficam em uma linha horizontal no canto superior, sempre dentro do card (antes podiam ultrapassar a borda em cards mais baixos)',
     'Aba Transações: a segunda linha do card (categoria/conta) agora trunca com reticências, então a altura do card não muda mais em função do tamanho da descrição ou da categoria',
@@ -2885,10 +2887,11 @@ async function openDataSheet(){
       Quando conectado, todas as pessoas que abrirem o app com essa mesma configuração compartilham os mesmos dados em tempo real.
       ${fbError ? '<br><strong style="color:var(--brick)">Se os dados não baterem entre aparelhos, toque em "Sincronizar agora" sem sair do app até a confirmação aparecer.</strong>' : ''}
     </p>
-    <div class="field"><span>Configuração do Firebase (cole o JSON do console)</span>
+    <label class="checkbox-row" style="margin:6px 0 10px 0;"><input type="checkbox" id="showFbConfigCheck" ${existingConfig ? '' : 'checked'}><span>Mostrar campo "Configuração do Firebase"</span></label>
+    <div class="field ${existingConfig ? 'hidden-field' : ''}" id="fbConfigFieldWrap"><span>Configuração do Firebase (cole o JSON do console)</span>
       <textarea id="fbConfigInput" rows="6" style="font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#FCFBF7; width:100%; resize:vertical;" placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "...",&#10;  ...&#10;}'>${esc(configText)}</textarea>
     </div>
-    <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar e sincronizar</button>
+    <button class="btn-primary" id="saveFbConfigBtn" type="button">Salvar configurações na nuvem</button>
     ${existingConfig ? `<button class="btn-primary" id="removeFbConfigBtn" type="button" style="margin-top:10px; background:linear-gradient(135deg, var(--rose), var(--brick));">Desconectar</button>` : ''}
     ${existingConfig ? `<button class="btn-primary" id="syncNowBtn" type="button" style="margin-top:10px;">Sincronizar agora</button>` : ''}
     <p class="muted small" id="fbStatus" style="margin-top:10px;"></p>
@@ -2897,6 +2900,11 @@ async function openDataSheet(){
     <p class="sheet-title" style="font-size:15px;">Sobre esta versão</p>
     <p class="muted small" style="margin:-8px 0 0 0">Versão instalada: <strong style="color:var(--ink)">v${APP_VERSION}</strong></p>
   `);
+
+  const showFbConfigCheck = document.getElementById('showFbConfigCheck');
+  if(showFbConfigCheck) showFbConfigCheck.addEventListener('change', (e) => {
+    document.getElementById('fbConfigFieldWrap').classList.toggle('hidden-field', !e.target.checked);
+  });
 
   const saveBtn = document.getElementById('saveFbConfigBtn');
   if(saveBtn) saveBtn.addEventListener('click', async () => {
@@ -2949,7 +2957,6 @@ async function openDataSheet(){
 
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'openCategoriesBtn' || e.target.closest('#openCategoriesBtn')) { openCategoriesSheet(); return; }
-  if (e.target.id === 'syncNowTopBtn' || e.target.closest('#syncNowTopBtn')) { performCloudSync(true); return; }
   if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
 
   if (e.target.id === 'exportBtn') {
