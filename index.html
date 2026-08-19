@@ -428,8 +428,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.12';
+const APP_VERSION = '1.34.13';
 const CHANGELOG = [
+  { v: '1.34.13', data: '2026-08-19', mudancas: [
+    'Topo do app: o indicador "☁ Sincronizado" agora também mostra a hora da última sincronização',
+  ]},
   { v: '1.34.12', data: '2026-08-19', mudancas: [
     'Configurações: adicionada a data e hora da última sincronização com a nuvem, junto do status de conexão',
   ]},
@@ -855,8 +858,9 @@ function formatRelativeSync(ts){
 function updateSyncBadge(){
   const el = document.getElementById('syncBadge');
   if(!el) return;
+  const lastSyncPart = lastCloudSyncAt ? ` · ${new Date(lastCloudSyncAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}` : '';
   if(fbConnecting) el.textContent = '☁ Conectando...';
-  else if(fbReady) el.textContent = fbError ? '☁ Conectado, com erros recentes ⚠' : '☁ Sincronizado';
+  else if(fbReady) el.textContent = (fbError ? '☁ Conectado, com erros recentes ⚠' : '☁ Sincronizado') + lastSyncPart;
   else if(fbError) el.textContent = '⚠ Erro de sincronização';
   else el.textContent = '';
 }

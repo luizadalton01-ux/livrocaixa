@@ -15,7 +15,7 @@
  * novo, evitando que o usuário fique preso numa versão desatualizada do app.
  */
 
-const CACHE_VERSION = 'lc-cache-v1.34.12';
+const CACHE_VERSION = 'lc-cache-v1.34.13';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
