@@ -143,7 +143,7 @@
   .accounts-stats > div{ background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:9px 8px; text-align:center; box-shadow:var(--shadow-sm); }
   .accounts-stats .stat-value{ margin:2px 0 0 0; font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
   .account-card{ background:var(--paper-raised); border:1.5px solid #C9C2AA; border-left:3px solid var(--teal-light);
-    border-radius:10px; padding:6px 40px 6px 12px; position:relative; cursor:pointer; box-shadow:var(--shadow-sm); }
+    border-radius:10px; padding:6px 78px 6px 12px; position:relative; cursor:pointer; box-shadow:var(--shadow-sm); min-height:52px; }
   .account-card.acc-tone-positive{ background:linear-gradient(180deg, #FFFFFF, #E3F1F3); }
   .account-card.acc-tone-negative{ background:linear-gradient(180deg, #FFFFFF, #FBEDE9); }
   .account-card.zebra-a{ background:var(--paper-raised); }
@@ -156,12 +156,12 @@
   .account-card.select-mode{ cursor:pointer; }
   .account-card.selected{ background:#EAF6EF !important; border-left-color:var(--ledger) !important; box-shadow:0 0 0 1.5px var(--ledger); }
   .account-balance{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; margin:0; line-height:1.2; }
-  .icon-btn{ background:none; border:none; padding:4px; border-radius:6px; color:var(--muted); }
-  .account-card .icon-btn.danger{ position:absolute; top:4px; right:6px; }
-  .account-card .icon-btn.edit-acct{ position:absolute; top:24px; right:6px; color:var(--muted); }
-  .account-card .icon-btn.edit-acct:hover{ color:var(--ink); }
-  .account-card .icon-btn.toggle-acct{ position:absolute; top:44px; right:6px; color:var(--muted); }
-  .account-card .icon-btn.toggle-acct:hover{ color:var(--ledger); }
+  .account-card-actions{ position:absolute; top:6px; right:6px; display:flex; align-items:center; gap:1px; }
+  .icon-btn{ background:none; border:none; padding:3px; border-radius:6px; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; }
+  .account-card-actions .icon-btn.edit-acct{ color:var(--muted); }
+  .account-card-actions .icon-btn.edit-acct:hover{ color:var(--ink); }
+  .account-card-actions .icon-btn.toggle-acct{ color:var(--muted); }
+  .account-card-actions .icon-btn.toggle-acct:hover{ color:var(--ledger); }
 
   .ledger{ list-style:none; margin:0; padding:0; }
   .ledger-row{ display:flex; align-items:center; gap:9px; padding:7px 2px; border-bottom:1px solid var(--line); }
@@ -174,7 +174,7 @@
   .dot.saida{ background:var(--brick); }
   .ledger-main{ flex:1; min-width:0; }
   .ledger-desc{ margin:0; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; }
-  .ledger-main p.muted.small{ margin:1px 0 0 0; }
+  .ledger-main p.muted.small{ margin:1px 0 0 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .day-ledger{ display:flex; flex-direction:column; gap:8px; }
   .day-block{ border-radius:10px; padding:7px 9px; background:var(--paper-raised); border:1px solid var(--line); box-shadow:var(--shadow-sm); }
@@ -431,8 +431,12 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.9';
+const APP_VERSION = '1.34.10';
 const CHANGELOG = [
+  { v: '1.34.10', data: '2026-08-19', mudancas: [
+    'Aba Contas: botões de editar/excluir/ativar-inativar dos cards agora ficam em uma linha horizontal no canto superior, sempre dentro do card (antes podiam ultrapassar a borda em cards mais baixos)',
+    'Aba Transações: a segunda linha do card (categoria/conta) agora trunca com reticências, então a altura do card não muda mais em função do tamanho da descrição ou da categoria',
+  ]},
   { v: '1.34.9', data: '2026-08-19', mudancas: [
     'Aba Transações: tocar e segurar numa transação agora entra no modo de seleção (já com aquele item marcado) e mostra os botões Cancelar/Selecionar tudo/Remover — esse recurso já existia no extrato de conta e na busca, mas não aparecia mais na aba Transações',
   ]},
@@ -1685,9 +1689,11 @@ function renderAccounts(){
     return `
     <div class="account-card ${ativa ? accountBalanceToneClass(balance) : 'inactive'} ${acctSelectMode ? 'select-mode' : ''} ${sel ? 'selected' : ''}" data-action="${acctSelectMode ? 'toggle-select-account' : 'open-account-statement'}" data-id="${a.id}" style="${ativa ? `border-left-color:${balColor};` : ''}">
       ${acctSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : `
-      <button class="icon-btn danger" data-action="delete-account" data-id="${a.id}">${ICONS.trash}</button>
-      <button class="icon-btn edit-acct" data-action="edit-account" data-id="${a.id}" title="Editar conta">${ICONS.pencil}</button>
-      <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>`}
+      <div class="account-card-actions">
+        <button class="icon-btn danger" data-action="delete-account" data-id="${a.id}">${ICONS.trash}</button>
+        <button class="icon-btn edit-acct" data-action="edit-account" data-id="${a.id}" title="Editar conta">${ICONS.pencil}</button>
+        <button class="icon-btn toggle-acct" data-action="toggle-account-active" data-id="${a.id}" title="${ativa ? 'Tornar inativa' : 'Tornar ativa'}">${ICONS.power}</button>
+      </div>`}
       <p class="muted small"><span class="type-dot" style="background:${ativa ? typeColor : '#B7AF98'}"></span>${esc(a.banco)||'—'} · ${esc(a.tipo)} ${ativa ? '' : '· <span class="inactive-tag">Inativa</span>'}</p>
       <h3>${esc(a.nome)}</h3>
       <p class="account-balance ${balancesHidden?'balance-masked':''}" style="color:${ativa ? balColor : '#6B6553'}">${maskBalance(fmtBRL(balance))}</p>
