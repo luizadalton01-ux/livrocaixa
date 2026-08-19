@@ -125,7 +125,9 @@
   .section-head h2{ font-family:'Fraunces',serif; font-size:18px; font-weight:600; margin:0; }
 
   .filter-row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-  .filter-row select{ font-family:'Inter',sans-serif; font-size:12px; padding:6px 8px; border:1px solid var(--line);
+  .filter-row-nowrap{ display:flex; gap:6px; align-items:center; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+  .filter-row-nowrap > *{ flex-shrink:0; }
+  .filter-row select, .filter-row-nowrap select{ font-family:'Inter',sans-serif; font-size:12px; padding:6px 8px; border:1px solid var(--line);
     border-radius:20px; background:var(--paper-raised); color:var(--ink); }
   .notif-status{ margin:-4px 0 4px 0; }
   .filters-panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:12px;
@@ -136,28 +138,29 @@
   .chip.chip-warn{ color:var(--brick); border-color:#E7C9BF; }
   .chip.chip-warn.active{ background:linear-gradient(135deg, var(--rose), var(--brick)); color:#fff; border-color:var(--brick); }
 
-  .account-grid{ display:flex; flex-direction:column; gap:7px; }
+  .account-grid{ display:flex; flex-direction:column; gap:6px; }
   .accounts-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .accounts-stats > div{ background:var(--paper-raised); border:1px solid var(--line); border-radius:10px; padding:9px 8px; text-align:center; box-shadow:var(--shadow-sm); }
   .accounts-stats .stat-value{ margin:2px 0 0 0; font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
   .account-card{ background:var(--paper-raised); border:1.5px solid #C9C2AA; border-left:3px solid var(--teal-light);
-    border-radius:10px; padding:9px 40px 9px 12px; position:relative; cursor:pointer; box-shadow:var(--shadow-sm); }
+    border-radius:10px; padding:6px 40px 6px 12px; position:relative; cursor:pointer; box-shadow:var(--shadow-sm); }
   .account-card.acc-tone-positive{ background:linear-gradient(180deg, #FFFFFF, #E3F1F3); }
   .account-card.acc-tone-negative{ background:linear-gradient(180deg, #FFFFFF, #FBEDE9); }
   .account-card.zebra-a{ background:var(--paper-raised); }
   .account-card.zebra-b{ background:#FBF7EC; }
   .account-card.inactive{ opacity:0.6; background:#F1EEE3; border-left-color:var(--line); }
   .inactive-tag{ color:var(--brick); font-weight:600; }
-  .account-card h3{ font-family:'Fraunces',serif; font-size:13.5px; margin:1px 0 4px 0; }
+  .account-card h3{ font-family:'Fraunces',serif; font-size:13px; margin:0 0 2px 0; line-height:1.2; }
+  .account-card p.muted.small{ margin:0; line-height:1.2; }
   .type-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
   .account-card.select-mode{ cursor:pointer; }
   .account-card.selected{ background:#EAF6EF !important; border-left-color:var(--ledger) !important; box-shadow:0 0 0 1.5px var(--ledger); }
-  .account-balance{ font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:600; margin:0; }
+  .account-balance{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; margin:0; line-height:1.2; }
   .icon-btn{ background:none; border:none; padding:4px; border-radius:6px; color:var(--muted); }
-  .account-card .icon-btn.danger{ position:absolute; top:6px; right:6px; }
-  .account-card .icon-btn.edit-acct{ position:absolute; top:32px; right:6px; color:var(--muted); }
+  .account-card .icon-btn.danger{ position:absolute; top:4px; right:6px; }
+  .account-card .icon-btn.edit-acct{ position:absolute; top:24px; right:6px; color:var(--muted); }
   .account-card .icon-btn.edit-acct:hover{ color:var(--ink); }
-  .account-card .icon-btn.toggle-acct{ position:absolute; top:58px; right:6px; color:var(--muted); }
+  .account-card .icon-btn.toggle-acct{ position:absolute; top:44px; right:6px; color:var(--muted); }
   .account-card .icon-btn.toggle-acct:hover{ color:var(--ledger); }
 
   .ledger{ list-style:none; margin:0; padding:0; }
@@ -192,12 +195,12 @@
   .tx-group-body .ledger-row{ padding-left:2px; }
 
   .tx-layout{ display:flex; gap:10px; align-items:flex-start; }
-  .tx-sidebar{ flex:0 0 148px; width:148px; display:flex; flex-direction:column; gap:4px;
+  .tx-sidebar{ flex:0 0 112px; width:112px; display:flex; flex-direction:column; gap:3px;
     background:var(--paper-raised); border:1px solid var(--line);
     border-radius:12px; padding:8px; }
-  .acct-chip{ background:none; border:1px solid var(--line); border-radius:8px; padding:9px 8px; font-size:12.5px; line-height:1.3;
+  .acct-chip{ background:none; border:1px solid var(--line); border-radius:8px; padding:6px 7px; font-size:11.5px; line-height:1.2;
     font-family:'Inter',sans-serif; color:var(--ink); text-align:left; word-break:break-word; }
-  .acct-chip .acct-chip-balance{ display:block; margin-top:2px; font-family:'JetBrains Mono',monospace; font-size:10.5px;
+  .acct-chip .acct-chip-balance{ display:block; margin-top:1px; font-family:'JetBrains Mono',monospace; font-size:10px;
     font-weight:600; color:var(--muted); opacity:0.9; }
   .acct-chip.acc-tone-positive{ background:linear-gradient(180deg, #FFFFFF, #E3F1F3); border-color:#B9DCE2; }
   .acct-chip.acc-tone-negative{ background:linear-gradient(180deg, #FFFFFF, #FBEDE9); border-color:#EAC4BB; }
@@ -205,8 +208,8 @@
   .acct-chip.active{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); color:#fff; font-weight:600; }
   .acct-chip.inactive{ color:var(--muted); opacity:0.75; }
   .acct-chip.inactive.active{ background:var(--muted); color:#fff; opacity:1; }
-  .acct-chip-all{ font-weight:700; font-family:'Fraunces',serif; font-size:13px; border-bottom:1px solid var(--line); border-radius:0; padding-bottom:9px; margin-bottom:4px; }
-  .acct-sidebar-divider{ border-top:1px dashed var(--line); margin:4px 0; padding-top:2px; }
+  .acct-chip-all{ font-weight:700; font-family:'Fraunces',serif; font-size:12px; border-bottom:1px solid var(--line); border-radius:0; padding-bottom:6px; margin-bottom:3px; }
+  .acct-sidebar-divider{ border-top:1px dashed var(--line); margin:3px 0; padding-top:1px; }
   .tx-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:12px; }
 
   .period-row{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
@@ -310,13 +313,13 @@
   @media (min-width:680px){
     .cards{ grid-template-columns:repeat(4,1fr); }
     #content{ max-width:900px; }
-    .tx-sidebar{ flex-basis:180px; width:180px; }
+    .tx-sidebar{ flex-basis:150px; width:150px; }
     .account-grid{ display:grid; grid-template-columns:1fr 1fr; align-items:start; }
     .period-row{ flex-wrap:nowrap; }
   }
   @media (max-width:360px){
-    .tx-sidebar{ flex-basis:120px; width:120px; }
-    .acct-chip{ font-size:11px; padding:8px 6px; }
+    .tx-sidebar{ flex-basis:96px; width:96px; }
+    .acct-chip{ font-size:10.5px; padding:5px 5px; }
   }
 
   /* ---- loading screen: moedas caindo ---- */
@@ -428,8 +431,16 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.7';
+const APP_VERSION = '1.34.9';
 const CHANGELOG = [
+  { v: '1.34.9', data: '2026-08-19', mudancas: [
+    'Aba Transações: tocar e segurar numa transação agora entra no modo de seleção (já com aquele item marcado) e mostra os botões Cancelar/Selecionar tudo/Remover — esse recurso já existia no extrato de conta e na busca, mas não aparecia mais na aba Transações',
+  ]},
+  { v: '1.34.8', data: '2026-08-19', mudancas: [
+    'Aba Contas: cards de conta mais compactos (menor altura)',
+    'Aba Transações: coluna de contas na lateral ficou mais estreita e com cards mais compactos',
+    'Aba Transações: os 3 controles de filtro (Não consolidadas, mês, ano) agora ficam sempre na mesma linha',
+  ]},
   { v: '1.34.7', data: '2026-08-19', mudancas: [
     'Aba Transações: fundo dos cards de transação agora é branco, no mesmo estilo visual da aba "A pagar" (antes tinha um tom azulado)',
   ]},
@@ -1894,7 +1905,7 @@ function renderTransactions(){
   const selYear = txPeriod.year || now.getFullYear();
 
   const periodControls = `
-    <div class="filter-row">
+    <div class="filter-row-nowrap">
       <button class="chip chip-warn ${filterConsolidado==='pendentes'?'active':''}" data-action="toggle-filter-consolidado">Não consolidadas</button>
       <select id="txMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
       <select id="txYearSelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
@@ -1919,7 +1930,7 @@ function renderTransactions(){
     <div class="tx-main">
       <div class="section-head"><h2>Transações</h2></div>
       ${warn}
-      ${periodControls}
+      ${txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : periodControls}
       ${ledgerHtml}
     </div>
   </div>`;
