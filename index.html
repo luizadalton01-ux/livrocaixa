@@ -430,8 +430,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.36.0';
+const APP_VERSION = '1.36.1';
 const CHANGELOG = [
+  { v: '1.36.1', data: '2026-08-20', mudancas: [
+    'Corrigido: "Próximos vencimentos" e o card "Contas pendentes" na Visão geral agora mostram exatamente a mesma lista de transações que aparece na aba "A pagar" (antes a Visão geral também incluía entradas pendentes, que não aparecem em "A pagar")',
+  ]},
   { v: '1.36.0', data: '2026-08-20', mudancas: [
     '"Contas a pagar" deixou de ser um cadastro separado: agora é a mesma base de dados de transações (uma saída ainda não consolidada). Cadastro, edição e exclusão usam sempre o mesmo formulário, em qualquer parte do app',
     'Aba "A pagar": a lista agora usa exatamente o mesmo card/layout de lançamento das abas Transações e busca, com os mesmos filtros por mês e por status (pendente/paga)',
@@ -1507,15 +1510,16 @@ document.body.addEventListener('click', (e) => {
   }
 });
 
-// Unifica duas fontes de "coisas pendentes" para os quadros da Visão Geral:
-// 1) contas a pagar (aba "A pagar") ainda não pagas — usam o campo "vencimento";
-// 2) transações lançadas com data futura/recente e ainda "não consolidadas" — usam o campo "data".
-// Isso cobre tanto quem usa a aba "A pagar" quanto quem lança recorrências direto em Transações.
+// Fonte de "coisas pendentes" pra Visão Geral (card "Contas pendentes" e "Próximos
+// vencimentos"): usa o EXATO mesmo critério da aba "A pagar" — transações de saída
+// ainda não consolidadas — pra que as duas telas mostrem sempre a mesma lista.
+// "billItems" só existe por segurança/retrocompatibilidade (bills sempre fica vazio
+// depois da migração automática para transações).
 function pendingItemsUnified(){
   const billItems = (bills||[]).filter(b => !b.pago).map(b => ({
     id: b.id, descricao: b.descricao, valor: b.valor, dueDate: b.vencimento, tipo: 'saida', source: 'bill'
   }));
-  const txItems = (transactions||[]).filter(t => !t.consolidado && t.tipo !== 'transferencia').map(t => ({
+  const txItems = (transactions||[]).filter(t => !t.consolidado && t.tipo === 'saida').map(t => ({
     id: t.id, descricao: t.descricao, valor: t.valor, dueDate: t.data, tipo: t.tipo, source: 'transaction'
   }));
   return [...billItems, ...txItems];
