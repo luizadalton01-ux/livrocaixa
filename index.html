@@ -430,8 +430,14 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.35.1';
+const APP_VERSION = '1.36.0';
 const CHANGELOG = [
+  { v: '1.36.0', data: '2026-08-20', mudancas: [
+    '"Contas a pagar" deixou de ser um cadastro separado: agora é a mesma base de dados de transações (uma saída ainda não consolidada). Cadastro, edição e exclusão usam sempre o mesmo formulário, em qualquer parte do app',
+    'Aba "A pagar": a lista agora usa exatamente o mesmo card/layout de lançamento das abas Transações e busca, com os mesmos filtros por mês e por status (pendente/paga)',
+    'Nova transação: o fundo azul (entrada) / vermelho (saída) agora também aparece ao criar uma transação nova, não só ao editar',
+    'Contas a pagar antigas (deste aparelho, de um backup importado ou ainda salvas na nuvem) são convertidas automaticamente para o novo formato, sem perda de dados',
+  ]},
   { v: '1.35.1', data: '2026-08-20', mudancas: [
     'Aba "A pagar": a lista de transações não consolidadas agora usa exatamente o mesmo layout de lançamento da aba Transações (sem painel extra em volta, sem divisão "passadas/futuras")',
     'Busca de transações: os resultados agora também usam esse mesmo layout, agrupados por dia como no resto do app',
@@ -707,8 +713,7 @@ let filterConsolidado = 'todos';
 let acctSelectMode = false, selectedAccounts = new Set(), lastAccountsListIds = [];
 let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
 let longPressTimer = null, longPressTriggered = false;
-let billSelectMode = false, selectedBills = new Set(), lastBillsListIds = [];
-let filterBills = 'pendentes';
+let filterBills = 'pendentes'; // filtra a aba "A pagar" pelo campo consolidado das transações (pendentes/pagas/todas)
 let billsMonth = null; // null = mês em curso
 let expandedGroups = new Set();
 let groupVisible = {};
@@ -766,6 +771,32 @@ function migrateData(){
   transactions.forEach(t => { if (t.consolidado === undefined) t.consolidado = t.data <= today; });
 }
 
+// "Contas a pagar" deixou de ser um cadastro separado: toda conta a pagar agora É uma
+// transação de saída (consolidado:false = pendente, consolidado:true = paga), usando o
+// mesmo formulário, a mesma listagem e a mesma base de dados de qualquer outra transação.
+// Essa função converte qualquer "bill" antiga (deste aparelho, de um backup importado, ou
+// que ainda exista na nuvem de uma versão anterior do app) para esse formato único, uma
+// única vez — depois disso a lista de bills fica sempre vazia.
+function migrateBillsToTransactions(){
+  if(!bills.length) return;
+  const novasTx = bills.map(b => ({
+    id: b.id,
+    tipo: 'saida',
+    valor: b.valor,
+    data: b.vencimento,
+    descricao: b.descricao || '(sem descrição)',
+    categoria: b.categoria || 'Outros',
+    contaId: b.contaId || '',
+    consolidado: !!b.pago,
+  }));
+  const idsAntigos = bills.map(b => b.id);
+  transactions.push(...novasTx);
+  bills = [];
+  persist();
+  fsBatchSet('transactions', novasTx);
+  fsBatchDelete('bills', idsAntigos);
+}
+
 async function loadInitialState(){
   try{
     const stored = await idbGetAll();
@@ -774,6 +805,7 @@ async function loadInitialState(){
       transactions = stored.transactions || [];
       bills = stored.bills || [];
       migrateData();
+      migrateBillsToTransactions();
       return;
     }
     // migração única: se havia dados salvos na versão anterior (localStorage), traz para o IndexedDB
@@ -785,6 +817,7 @@ async function loadInitialState(){
       transactions = oldT ? JSON.parse(oldT) : [];
       bills = oldB ? JSON.parse(oldB) : [];
       migrateData();
+      migrateBillsToTransactions();
       persist();
     }
   } catch(err){
@@ -962,9 +995,12 @@ function attachFirestoreListeners(){
     if(applyDocChanges('accounts', accounts, snap.docChanges())){ migrateData(); persist(); render(); }
   }, (err) => { console.warn('accounts listener error', err); fbError = true; fbFirstSnapshot.accounts = true; updateSyncBadge(); }));
 
+  // "bills" só é mantido aqui pra receber (e imediatamente converter em transação) qualquer
+  // conta a pagar antiga que ainda exista na nuvem de um aparelho com uma versão anterior
+  // do app. O app não cria mais nada nessa coleção.
   fbUnsubscribers.push(fbDb.collection('bills').onSnapshot((snap) => {
     fbFirstSnapshot.bills = true;
-    if(applyDocChanges('bills', bills, snap.docChanges())){ persist(); render(); }
+    if(applyDocChanges('bills', bills, snap.docChanges())){ migrateBillsToTransactions(); persist(); render(); }
   }, (err) => { console.warn('bills listener error', err); fbError = true; fbFirstSnapshot.bills = true; updateSyncBadge(); }));
 
   fbUnsubscribers.push(fbDb.collection('transactions').onSnapshot((snap) => {
@@ -1106,7 +1142,7 @@ async function syncAllToFirebase(onProgress){
     } else if(cloudCount !== null && cloudCount < transactions.length){
       if(onProgress) onProgress(`⚠ Só ${cloudCount} de ${transactions.length} transações confirmadas na nuvem. Toque em "Enviar" novamente.`);
     } else {
-      if(onProgress) onProgress(`✓ Sincronização concluída: ${accounts.length} contas, ${transactions.length} transações, ${bills.length} contas a pagar.`);
+      if(onProgress) onProgress(`✓ Sincronização concluída: ${accounts.length} contas, ${transactions.length} transações.`);
     }
   } finally {
     fbSyncing = false;
@@ -1233,18 +1269,20 @@ function checkBillReminders(){
   const hour = now.getHours();
   const todayKey = todayStr();
   let changed = false;
-  bills.forEach(bill => {
-    if(bill.pago) return;
-    const dias = daysUntil(bill.vencimento);
+  // Usa a mesma lista unificada da Visão Geral (contas a pagar + transações não
+  // consolidadas) — antes essa função olhava só "bills" e não notificava sobre
+  // transações pendentes lançadas pela aba Transações.
+  pendingItemsUnified().forEach(item => {
+    const dias = daysUntil(item.dueDate);
     let slots = [];
     if(dias === 1) slots = BILL_REMINDER_SLOTS_DIA_ANTES;
     else if(dias === 0) slots = BILL_REMINDER_SLOTS_VENCIMENTO;
     else return;
     slots.forEach(slotHour => {
       if(hour === slotHour){
-        const key = `${bill.id}|${todayKey}|${slotHour}`;
+        const key = `${item.source}|${item.id}|${todayKey}|${slotHour}`;
         if(!notifiedSlots[key]){
-          fireBillNotification(bill, dias);
+          fireBillNotification(item, dias);
           notifiedSlots[key] = true;
           changed = true;
         }
@@ -1508,13 +1546,6 @@ function balanceOfToday(accId){
   return (acc.saldoInicial || 0) + delta;
 }
 function totalBalance(){ return accounts.filter(a => a.ativo !== false).reduce((s,a) => s + balanceOf(a.id), 0); }
-function billStatus(b){
-  if(b.pago) return 'pago';
-  const d = daysUntil(b.vencimento);
-  if(d < 0) return 'vencido';
-  if(d <= 7) return 'proximo';
-  return 'pendente';
-}
 function stampLabel(status){
   return { pago:['PAGO','#1B4332'], vencido:['VENCIDO','#B3432B'], proximo:['A VENCER','#C9A227'], pendente:['PENDENTE','#5B7B9A'] }[status];
 }
@@ -1966,16 +1997,21 @@ function renderTransactions(){
   </div>`;
 }
 
-/* =========================== bills =========================== */
+/* =========================== a pagar (agora é só uma visão filtrada de transações) =========================== */
+// "Contas a pagar" não é mais um cadastro à parte: é a mesma base de transações (saídas),
+// filtrada por status de consolidação. Cadastro, edição, exclusão e o card de cada
+// lançamento usam exatamente o mesmo formulário e o mesmo componente de listagem
+// (renderDayGroupedLedgerMulti) da aba Transações.
 function renderBills(){
   const now = new Date();
   const billsSelMonth = billsMonth || (now.getMonth()+1);
   const billsSelYear = now.getFullYear();
+  const billsMonthKey = `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`;
 
-  const list = [...bills].filter(b => filterBills==='todas' || (filterBills==='pendentes' ? !b.pago : b.pago))
-    .filter(b => b.vencimento.slice(0,7) === `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`)
-    .sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
-  lastBillsListIds = list.map(b => b.id);
+  const list = transactions.filter(t => t.tipo === 'saida' && t.data.slice(0,7) === billsMonthKey)
+    .filter(t => filterBills==='todas' || (filterBills==='pendentes' ? !t.consolidado : t.consolidado))
+    .sort((a,b) => a.data.localeCompare(b.data));
+  lastTxFilteredIds = list.map(t => t.id);
 
   const notifSupported = notificationsSupported();
   const notifPerm = notifSupported ? Notification.permission : 'unsupported';
@@ -1994,50 +2030,19 @@ function renderBills(){
     <select id="billsMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
   </div>`;
 
-  const body = list.length ? `<ul class="reminder-list">${list.map(b => {
-    const status = billStatus(b); const [label,color] = stampLabel(status); const d = daysUntil(b.vencimento);
-    const sel = billSelectMode && selectedBills.has(b.id);
-    return `<li class="reminder-row ${billSelectMode ? 'select-mode' : ''} ${sel ? 'selected' : ''}" data-action="${billSelectMode ? 'toggle-select-bill' : ''}" data-id="${b.id}">
-      ${billSelectMode ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>` : (status==='vencido' ? ICONS.warn : '')}
-      <div style="flex:1">
-        <p class="reminder-desc">${esc(b.descricao)} ${b.recorrente ? '<span class="muted small">(recorrente)</span>' : ''}</p>
-        <p class="muted small">vence ${fmtDate(b.vencimento)} · ${esc(b.categoria)}
-          ${!b.pago ? ' · ' + (d<0?`${Math.abs(d)} dia(s) atrasado`:d===0?'vence hoje':`em ${d} dia(s)`) : ''}
-          ${b.pago ? ' · pago em ' + fmtDate(b.dataPagamento) : ''}</p>
-      </div>
-      <div class="reminder-right">
-        <span class="amount">${fmtBRL(b.valor)}</span>
-        <span class="stamp" style="border-color:${color};color:${color}">${label}</span>
-        ${!billSelectMode ? `
-        ${!b.pago ? `<button class="btn-ghost" data-action="mark-paid" data-id="${b.id}">Marcar paga</button>` : ''}
-        <button class="icon-btn danger" data-action="delete-bill" data-id="${b.id}">${ICONS.trash}</button>` : ''}
-      </div>
-    </li>`;
-  }).join('')}</ul>` : '';
-
-  // Transações lançadas que ainda não foram consolidadas, no mesmo mês selecionado.
-  // Usa exatamente o mesmo componente/visual da aba Transações (mesmo cabeçalho de seção
-  // e mesma função de listagem, sem painel extra em volta nem divisão passadas/futuras),
-  // pra que uma transação apareça sempre igual em qualquer parte do app.
-  const billsMonthKey = `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`;
-  const naoConsolidadas = transactions.filter(t => !t.consolidado && t.data.slice(0,7) === billsMonthKey)
-    .sort((a,b) => a.data.localeCompare(b.data));
-
-  const naoConsolidadasSection = `
-    <div class="section-head" style="margin-top:6px;"><h2>Transações não consolidadas <span class="muted" style="font-size:13px; font-weight:400;">(${naoConsolidadas.length})</span></h2></div>
-    ${naoConsolidadas.length
-      ? renderDayGroupedLedgerMulti(naoConsolidadas)
-      : emptyState(ICONS.empty1, 'Nenhuma transação não consolidada', `Sem lançamentos pendentes em ${MONTH_NAMES[billsSelMonth-1]}.`)}`;
+  const emptyExtra = filterBills==='pendentes' ? ' pendentes' : filterBills==='pagas' ? ' pagas' : '';
+  const body = list.length
+    ? renderDayGroupedLedgerMulti(list)
+    : emptyState(ICONS.empty1, 'Nenhuma conta a pagar', `Sem saídas${emptyExtra} em ${MONTH_NAMES[billsSelMonth-1]}.`);
 
   return `<div class="stack">
     <div class="section-head"><h2>Contas a pagar</h2>
-      ${list.length ? `<button class="btn-ghost" data-action="toggle-select-mode-bills">${billSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
+      ${list.length ? `<button class="btn-ghost" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>` : ''}
     </div>
-    ${billSelectMode ? selectionBar(selectedBills.size, lastBillsListIds.length, 'bulk-delete-bills', 'toggle-select-mode-bills', 'select-all-bills', 'conta', 'contas') : ''}
+    ${txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : ''}
     ${notifHtml}
     ${filters}
     ${body}
-    ${naoConsolidadasSection}
   </div>`;
 }
 
@@ -2089,6 +2094,7 @@ function openTransactionForm(presetContaId, presets){
   const catListInicial = (tipoInicial==='entrada' ? CAT_ENTRADA : CAT_SAIDA).slice().sort((a,b) => a.localeCompare(b, 'pt-BR'));
   const catInicial = (p && p.categoria && catListInicial.includes(p.categoria)) ? p.categoria : catListInicial[0];
   const isTransferInicial = tipoInicial === 'transferencia';
+  const consolidadoInicial = (p && p.consolidado !== undefined) ? !!p.consolidado : true;
 
   openModal(`
     <p class="sheet-title">Nova transação</p>
@@ -2112,7 +2118,7 @@ function openTransactionForm(presetContaId, presets){
         <option value="" disabled selected>Selecione</option>
         ${activeAccs.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}
       </select></div>
-      <label class="checkbox-row"><input type="checkbox" name="consolidado" checked><span>Transação já consolidada</span></label>
+      <label class="checkbox-row"><input type="checkbox" name="consolidado" ${consolidadoInicial?'checked':''}><span>Transação já consolidada</span></label>
 
       <label class="checkbox-row"><input type="checkbox" id="recorrenteCheck"><span>Repetir esta transação (lançamentos futuros)</span></label>
       <div class="field hidden-field" id="recorrenciaFields">
@@ -2136,6 +2142,8 @@ function openTransactionForm(presetContaId, presets){
       <button class="btn-primary" type="submit">Lançar</button>
       <button class="btn-ghost" type="submit" data-action="save-and-new" style="width:100%; margin-top:8px; text-align:center;">Salvar e lançar outra</button>
     </form>`);
+  sheet.classList.toggle('tone-entrada', tipoInicial === 'entrada');
+  sheet.classList.toggle('tone-saida', tipoInicial === 'saida');
 
   document.getElementById('recorrenteCheck').addEventListener('change', (e) => {
     document.getElementById('recorrenciaFields').classList.toggle('hidden-field', !e.target.checked);
@@ -2153,6 +2161,8 @@ function openTransactionForm(presetContaId, presets){
     btn.classList.add('active');
     const tipo = btn.dataset.tipo;
     document.querySelector('#transactionForm input[name="tipo"]').value = tipo;
+    sheet.classList.toggle('tone-entrada', tipo === 'entrada');
+    sheet.classList.toggle('tone-saida', tipo === 'saida');
     const catField = document.getElementById('categoriaField');
     const destField = document.getElementById('destinoField');
     const contaLabel = document.getElementById('contaLabel');
@@ -2371,20 +2381,6 @@ document.body.addEventListener('submit', (e) => {
   }
 });
 
-function openBillForm(){
-  openModal(`
-    <p class="sheet-title">Nova conta a pagar</p>
-    <form id="billForm">
-      <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Aluguel" required></div>
-      <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" placeholder="R$ 0,00" required></div>
-      <div class="field"><span>Vencimento</span><input name="vencimento" type="date" value="${todayStr()}" required></div>
-      <div class="field"><span>Categoria</span><select name="categoria">${CAT_SAIDA.slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.filter(a=>a.ativo!==false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
-      <label class="checkbox-row"><input type="checkbox" name="recorrente"><span>Conta recorrente (mensal)</span></label>
-      <button class="btn-primary" type="submit">Salvar</button>
-    </form>`);
-}
-
 document.body.addEventListener('submit', (e) => {
   if(e.target.id === 'accountForm'){
     e.preventDefault();
@@ -2477,16 +2473,6 @@ document.body.addEventListener('submit', (e) => {
       closeModal();
     }
   }
-  if(e.target.id === 'billForm'){
-    e.preventDefault();
-    if(!confirm(CONFIRM_MSG)) return;
-    const f = new FormData(e.target);
-    const novaConta = { id:uid(), descricao:f.get('descricao').trim(), valor:parseCurrencyBRL(f.get('valor')), vencimento:f.get('vencimento'),
-      categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false };
-    bills.push(novaConta);
-    fsSetDoc('bills', novaConta);
-    closeModal();
-  }
 });
 
 /* =========================== delegated actions =========================== */
@@ -2497,14 +2483,15 @@ document.body.addEventListener('click', (e) => {
     activeTab = navBtn.dataset.tab;
     acctSelectMode = false; selectedAccounts.clear();
     txSelectMode = false; selectedTx.clear();
-    billSelectMode = false; selectedBills.clear();
     render(); return;
   }
 
   if(e.target.id === 'fab' || e.target.closest('#fab')){
     if(activeTab==='accounts') openAccountForm();
     else if(activeTab==='transactions') openTransactionForm();
-    else if(activeTab==='bills') openBillForm();
+    // "Nova conta a pagar" agora é o mesmo formulário de transação, já pré-preenchido
+    // como saída e não consolidada (pendente) — pra ser exatamente igual em toda parte.
+    else if(activeTab==='bills') openTransactionForm(undefined, { tipo:'saida', consolidado:false });
     return;
   }
 
@@ -2535,36 +2522,6 @@ document.body.addEventListener('click', (e) => {
       render();
     }
   }
-  if(action === 'delete-bill'){
-    const ok = confirm('Tem certeza que deseja excluir esta conta a pagar? Essa ação não pode ser desfeita.');
-    if(ok){
-      bills = bills.filter(b => b.id !== btn.dataset.id);
-      fsDeleteDoc('bills', btn.dataset.id);
-      render();
-    }
-  }
-  if(action === 'mark-paid'){
-    if(!confirm(CONFIRM_MSG)) return;
-    const bill = bills.find(b => b.id === btn.dataset.id);
-    if(bill){
-      bill.pago = true; bill.dataPagamento = todayStr();
-      fsSetDoc('bills', bill);
-      if(bill.contaId){
-        const novaTx = { id:uid(), tipo:'saida', valor:bill.valor, data:todayStr(), descricao:bill.descricao, categoria:bill.categoria, contaId:bill.contaId, consolidado:true };
-        transactions.push(novaTx);
-        fsSetDoc('transactions', novaTx);
-      }
-      // conta recorrente: gera automaticamente a próxima ocorrência (mês seguinte) já pendente
-      if(bill.recorrente){
-        const proximaConta = { id:uid(), descricao:bill.descricao, valor:bill.valor, vencimento:addRecurrence(bill.vencimento,'mes',1),
-          categoria:bill.categoria, contaId:bill.contaId||'', recorrente:true, pago:false };
-        bills.push(proximaConta);
-        fsSetDoc('bills', proximaConta);
-      }
-    }
-    render();
-  }
-
   /* ---- seleção múltipla: contas ---- */
   if(action === 'toggle-select-mode-accounts'){ acctSelectMode = !acctSelectMode; selectedAccounts.clear(); render(); }
   if(action === 'toggle-select-account'){
@@ -2653,29 +2610,7 @@ document.body.addEventListener('click', (e) => {
     }
   }
 
-  /* ---- seleção múltipla: contas a pagar ---- */
-  if(action === 'toggle-select-mode-bills'){ billSelectMode = !billSelectMode; selectedBills.clear(); render(); }
-  if(action === 'toggle-select-bill'){
-    const id = btn.dataset.id;
-    if(selectedBills.has(id)) selectedBills.delete(id); else selectedBills.add(id);
-    render();
-  }
-  if(action === 'select-all-bills'){
-    if(selectedBills.size === lastBillsListIds.length) selectedBills.clear();
-    else lastBillsListIds.forEach(id => selectedBills.add(id));
-    render();
-  }
-  if(action === 'bulk-delete-bills'){
-    if(selectedBills.size === 0) return;
-    const ids = [...selectedBills];
-    const ok = confirm(`Tem certeza que deseja excluir ${ids.length} conta(s) a pagar? Essa ação não pode ser desfeita.`);
-    if(ok){
-      bills = bills.filter(b => !ids.includes(b.id));
-      fsBatchDelete('bills', ids);
-      billSelectMode = false; selectedBills.clear();
-      render();
-    }
-  }
+  /* ---- filtro "A pagar": reaproveita filterBills, agora comparando o campo consolidado ---- */
   if(action === 'filter-transactions'){ filterTipo = btn.dataset.value; render(); }
   if(action === 'toggle-filter-consolidado'){ filterConsolidado = filterConsolidado === 'pendentes' ? 'todos' : 'pendentes'; render(); }
   if(action === 'filter-account'){ txFilterAccountId = btn.dataset.id || null; render(); }
@@ -2917,7 +2852,7 @@ async function openDataSheet(){
   const configText = existingConfig ? JSON.stringify(existingConfig, null, 2) : '';
   const statusLabel = fbConnecting ? 'Conectando...' : fbReady ? (fbError ? 'Conectado, com erros recentes ⚠' : 'Conectado ☁') : fbError ? 'Erro de conexão ⚠' : 'Não conectado';
   const statusColor = fbConnecting ? 'var(--gold)' : fbReady && !fbError ? 'var(--ledger)' : 'var(--brick)';
-  const localCounts = `${accounts.length} contas · ${transactions.length} transações · ${bills.length} contas a pagar (neste aparelho)`;
+  const localCounts = `${accounts.length} contas · ${transactions.length} transações (neste aparelho)`;
   const lastSyncLabel = lastCloudSyncAt ? new Date(lastCloudSyncAt).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'nunca';
 
   openModal(`
@@ -3037,6 +2972,7 @@ document.body.addEventListener('click', (e) => {
         bills = Array.isArray(data.bills) ? data.bills : [];
         accounts.forEach(a => { if (a.ativo === undefined) a.ativo = true; });
         migrateData();
+        migrateBillsToTransactions();
         persist();
         closeModal();
         render();
