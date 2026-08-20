@@ -430,8 +430,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.35.1';
 const CHANGELOG = [
+  { v: '1.35.1', data: '2026-08-20', mudancas: [
+    'Aba "A pagar": a lista de transações não consolidadas agora usa exatamente o mesmo layout de lançamento da aba Transações (sem painel extra em volta, sem divisão "passadas/futuras")',
+    'Busca de transações: os resultados agora também usam esse mesmo layout, agrupados por dia como no resto do app',
+    'Unificado: cadastrar ou editar uma transação em qualquer parte do app (aba Transações, extrato de uma conta, busca ou A pagar) usa sempre o mesmo formulário e a mesma base de dados de transações',
+  ]},
   { v: '1.35.0', data: '2026-08-20', mudancas: [
     'Nova transação: adicionado o botão "Salvar e lançar outra", que salva o lançamento atual e já abre um novo com a mesma data, categoria, conta e tipo (entrada/saída/transferência)',
     'Edição de transação: o fundo da tela agora fica em tom azul para entradas e em tom vermelho para saídas',
@@ -2010,20 +2015,19 @@ function renderBills(){
     </li>`;
   }).join('')}</ul>` : '';
 
-  // transações lançadas que ainda não foram consolidadas (passadas e futuras), filtradas pelo mesmo mês
-  const hoje = todayStr();
+  // Transações lançadas que ainda não foram consolidadas, no mesmo mês selecionado.
+  // Usa exatamente o mesmo componente/visual da aba Transações (mesmo cabeçalho de seção
+  // e mesma função de listagem, sem painel extra em volta nem divisão passadas/futuras),
+  // pra que uma transação apareça sempre igual em qualquer parte do app.
   const billsMonthKey = `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`;
-  const naoConsolidadas = transactions.filter(t => !t.consolidado && t.data.slice(0,7) === billsMonthKey);
-  const passadas = naoConsolidadas.filter(t => t.data < hoje).sort((a,b) => a.data.localeCompare(b.data));
-  const futuras = naoConsolidadas.filter(t => t.data >= hoje).sort((a,b) => a.data.localeCompare(b.data));
+  const naoConsolidadas = transactions.filter(t => !t.consolidado && t.data.slice(0,7) === billsMonthKey)
+    .sort((a,b) => a.data.localeCompare(b.data));
 
-  const naoConsolidadasPanel = `
-    <div class="panel">
-      <p class="muted small" style="font-weight:600; margin-bottom:4px;">Passadas (${passadas.length})</p>
-      ${renderDayGroupedLedgerMulti(passadas, true)}
-      <p class="muted small" style="font-weight:600; margin:18px 0 4px 0;">Futuras (${futuras.length})</p>
-      ${renderDayGroupedLedgerMulti(futuras, true)}
-    </div>`;
+  const naoConsolidadasSection = `
+    <div class="section-head" style="margin-top:6px;"><h2>Transações não consolidadas <span class="muted" style="font-size:13px; font-weight:400;">(${naoConsolidadas.length})</span></h2></div>
+    ${naoConsolidadas.length
+      ? renderDayGroupedLedgerMulti(naoConsolidadas)
+      : emptyState(ICONS.empty1, 'Nenhuma transação não consolidada', `Sem lançamentos pendentes em ${MONTH_NAMES[billsSelMonth-1]}.`)}`;
 
   return `<div class="stack">
     <div class="section-head"><h2>Contas a pagar</h2>
@@ -2033,7 +2037,7 @@ function renderBills(){
     ${notifHtml}
     ${filters}
     ${body}
-    ${naoConsolidadasPanel}
+    ${naoConsolidadasSection}
   </div>`;
 }
 
@@ -2829,23 +2833,11 @@ function renderSearchResults(query){
 
   if(!matches.length){ box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Nenhuma transação encontrada.</p>`; return; }
 
+  // Mesma função de listagem usada nas abas Transações e A pagar, pra que os resultados
+  // da busca apareçam com o layout exatamente igual ao resto do aplicativo.
   box.innerHTML = `
     <p class="muted small" style="padding:4px 2px 8px 2px;">${matches.length}${matches.length===60?'+':''} resultado(s)</p>
-    ${matches.map(t => {
-      const sel = txSelectMode && selectedTx.has(t.id);
-      return `
-    <div class="ledger-row clickable ${sel ? 'selected' : ''}" data-action="${txSelectMode ? 'toggle-select-tx' : 'edit-transaction'}" data-id="${t.id}">
-      ${txSelectMode
-        ? `<span class="select-check ${sel?'on':''}">${sel ? ICONS.check2 : ''}</span>`
-        : `<button class="consolidado-toggle ${t.consolidado?'on':''}" data-action="toggle-consolidado" data-id="${t.id}" title="${t.consolidado?'Consolidada':'Pendente'}">${t.consolidado ? ICONS.check2 : ''}</button>`}
-      <span class="dot ${t.tipo}"></span>
-      <div class="ledger-main">
-        <p class="ledger-desc">${esc(t.descricao)}</p>
-        <p class="muted small">${fmtDate(t.data)} · ${esc(t.categoria)} · ${esc(accountName(t.contaId))}</p>
-      </div>
-      <span class="amount ${t.tipo}">${t.tipo==='entrada'?'+':'−'} ${fmtBRL(t.valor)}</span>
-    </div>`;
-    }).join('')}`;
+    ${renderDayGroupedLedgerMulti(matches)}`;
 }
 
 document.body.addEventListener('input', (e) => {
