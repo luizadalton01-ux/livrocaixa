@@ -433,8 +433,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.36.4';
+const APP_VERSION = '1.36.5';
 const CHANGELOG = [
+  { v: '1.36.5', data: '2026-08-20', mudancas: [
+    'Corrigido: o "Saldo total" (topo do app e cartão na Visão geral) agora usa o saldo de hoje de cada conta ativa, igual aos cartões da aba Contas — antes ele também somava lançamentos com data futura, o que fazia os dois valores não baterem',
+  ]},
   { v: '1.36.4', data: '2026-08-20', mudancas: [
     'Aba Contas: no extrato de uma conta, o título, os botões, o filtro de mês/ano e os cartões de Entradas/Saídas/Saldo do mês agora ficam fixos no topo ao rolar a lista de transações',
   ]},
@@ -1544,16 +1547,11 @@ function pendingStatus(dueDate){
   return 'pendente';
 }
 
-function balanceOf(accId){
-  const acc = accounts.find(a => a.id === accId);
-  if(!acc) return 0;
-  const delta = transactions.filter(t => t.contaId === accId)
-    .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
-  return (acc.saldoInicial || 0) + delta;
-}
-// Mesmo cálculo, mas considerando só transações até hoje (ignora lançamentos futuros
-// já cadastrados) — usado nos cartões da aba Contas e na barra lateral de Transações,
-// pra mostrar o saldo "do dia" em vez do saldo projetado com lançamentos futuros.
+// Saldo "de hoje" de uma conta — considera só transações com data até hoje (ignora
+// lançamentos futuros já cadastrados). É o mesmo cálculo usado nos cartões da aba Contas
+// e na barra lateral de Transações, e agora também no "Saldo total" do topo — antes o
+// "Saldo total" somava TODAS as transações (inclusive futuras) e por isso não batia com
+// a soma dos saldos "de hoje" de cada conta.
 function balanceOfToday(accId){
   const acc = accounts.find(a => a.id === accId);
   if(!acc) return 0;
@@ -1562,7 +1560,7 @@ function balanceOfToday(accId){
     .reduce((s,t) => s + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
   return (acc.saldoInicial || 0) + delta;
 }
-function totalBalance(){ return accounts.filter(a => a.ativo !== false).reduce((s,a) => s + balanceOf(a.id), 0); }
+function totalBalance(){ return accounts.filter(a => a.ativo !== false).reduce((s,a) => s + balanceOfToday(a.id), 0); }
 function stampLabel(status){
   return { pago:['PAGO','#1B4332'], vencido:['VENCIDO','#B3432B'], proximo:['A VENCER','#C9A227'], pendente:['PENDENTE','#5B7B9A'] }[status];
 }
