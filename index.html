@@ -275,6 +275,9 @@
   .stmt-summary > div:nth-child(2){ background:#FBEDE9; }
   .stmt-summary > div:nth-child(3){ background:#F2F4F8; }
   .stmt-summary .amount{ font-size:12.5px; display:block; margin-top:2px; }
+  /* Congela o cabeçalho do extrato (título, botões, filtro de mês/ano e os cartões de
+     entradas/saídas/saldo) no topo do modal enquanto a lista de transações rola por baixo. */
+  .stmt-sticky{ position:sticky; top:-8px; z-index:5; background:var(--paper); margin:-8px -18px 0 -18px; padding:8px 18px 0 18px; }
 
   .sheet-divider{ border-top:1px solid var(--line); margin:20px 0 16px 0; }
   .changelog-list{ display:flex; flex-direction:column; gap:14px; max-height:260px; overflow-y:auto; }
@@ -430,8 +433,18 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.36.1';
+const APP_VERSION = '1.36.4';
 const CHANGELOG = [
+  { v: '1.36.4', data: '2026-08-20', mudancas: [
+    'Aba Contas: no extrato de uma conta, o título, os botões, o filtro de mês/ano e os cartões de Entradas/Saídas/Saldo do mês agora ficam fixos no topo ao rolar a lista de transações',
+  ]},
+  { v: '1.36.3', data: '2026-08-20', mudancas: [
+    'Unificados os dois botões de exportar em Configurações num só, "Exportar dados (.json)"',
+    'A mensagem de confirmação da exportação agora também informa onde o arquivo foi salvo (app escolhido no menu de compartilhar, ou a pasta de downloads padrão do aparelho)',
+  ]},
+  { v: '1.36.2', data: '2026-08-20', mudancas: [
+    'Corrigido: os botões "Exportar dados" e "Exportar backup (.json)" (em Configurações) agora mostram uma mensagem de confirmação depois de gerar o arquivo (ou avisam se a exportação foi cancelada)',
+  ]},
   { v: '1.36.1', data: '2026-08-20', mudancas: [
     'Corrigido: "Próximos vencimentos" e o card "Contas pendentes" na Visão geral agora mostram exatamente a mesma lista de transações que aparece na aba "A pagar" (antes a Visão geral também incluía entradas pendentes, que não aparecem em "A pagar")',
   ]},
@@ -1839,43 +1852,60 @@ function openAccountStatement(accountId, presetMonth, presetYear){
   const years = statementYears(accountId);
   if(presetYear && !years.includes(presetYear)){ years.push(presetYear); years.sort((a,b) => b-a); }
   openModal(`
-    <p class="sheet-title">Extrato · ${esc(acc.nome)}</p>
-    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
-      <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="flex:1;">+ Nova transação nesta conta</button>
-      <button class="btn-ghost small" type="button" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>
+    <div id="stmtSticky" class="stmt-sticky">
+      <p class="sheet-title">Extrato · ${esc(acc.nome)}</p>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
+        <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="flex:1;">+ Nova transação nesta conta</button>
+        <button class="btn-ghost small" type="button" id="stmtSelectBtn" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>
+        <select id="stmtMonth">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
+        <select id="stmtYear">${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
+      </div>
+      <div id="stmtSummary">${renderStatementSummary()}</div>
     </div>
-    <div class="stmt-filters">
-      <select id="stmtMonth">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
-      <select id="stmtYear">${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
-    </div>
-    <div id="stmtResults">${renderStatementBody()}</div>
+    <div id="stmtResults">${renderStatementList()}</div>
   `);
 }
 
-function renderStatementBody(){
+// Itens do mês selecionado, na conta do extrato aberto — usado pelo resumo (cabeçalho fixo)
+// e pela lista (parte rolável), então fica isolado aqui pra não calcular duas fórmulas diferentes.
+function statementItems(){
+  const monthKey = `${stmtYear}-${String(stmtMonth).padStart(2,'0')}`;
+  return transactions.filter(t => t.contaId === stmtAccountId && t.data.slice(0,7) === monthKey);
+}
+
+// Cartões de Entradas/Saídas/Saldo do mês — ficam no cabeçalho fixo (#stmtSticky).
+function renderStatementSummary(){
   const acc = accounts.find(a => a.id === stmtAccountId);
   if(!acc) return '';
-  const monthKey = `${stmtYear}-${String(stmtMonth).padStart(2,'0')}`;
-  const items = transactions.filter(t => t.contaId === stmtAccountId && t.data.slice(0,7) === monthKey);
-  lastTxFilteredIds = items.map(t => t.id);
-
+  const items = statementItems();
   const entradas = items.filter(t => t.tipo==='entrada').reduce((s,t) => s+t.valor, 0);
   const saidas = items.filter(t => t.tipo==='saida').reduce((s,t) => s+t.valor, 0);
 
-  const summary = `
+  return `
     <div class="stmt-summary">
       <div><p class="muted small">Entradas</p><p class="amount entrada">${fmtBRL(entradas)}</p></div>
       <div><p class="muted small">Saídas</p><p class="amount saida">${fmtBRL(saidas)}</p></div>
       <div><p class="muted small">Saldo do mês</p><p class="amount ${entradas-saidas>=0?'entrada':'saida'}">${fmtBRL(entradas-saidas)}</p></div>
     </div>`;
+}
 
+// Lista de lançamentos do mês (com saldo do dia) — fica na parte rolável (#stmtResults).
+function renderStatementList(){
+  const acc = accounts.find(a => a.id === stmtAccountId);
+  if(!acc) return '';
+  const items = statementItems();
+  lastTxFilteredIds = items.map(t => t.id);
   const selBar = txSelectMode ? selectionBar(selectedTx.size, lastTxFilteredIds.length, 'bulk-delete-tx', 'toggle-select-mode-tx', 'select-all-tx', 'transação', 'transações') : '';
-  return summary + selBar + renderDayGroupedLedger(stmtAccountId, items, true);
+  return selBar + renderDayGroupedLedger(stmtAccountId, items, true);
 }
 
 function refreshStatementBody(){
+  const selectBtn = document.getElementById('stmtSelectBtn');
+  if(selectBtn) selectBtn.textContent = txSelectMode ? 'Cancelar' : 'Selecionar';
+  const summaryBox = document.getElementById('stmtSummary');
+  if(summaryBox) summaryBox.innerHTML = renderStatementSummary();
   const box = document.getElementById('stmtResults');
-  if(box) box.innerHTML = renderStatementBody();
+  if(box) box.innerHTML = renderStatementList();
 }
 
 // Atualiza a view certa depois de qualquer mudança de seleção/exclusão de transações,
@@ -2788,16 +2818,19 @@ async function saveToCloud(){
   const payload = JSON.stringify({ accounts, transactions, bills });
   const filename = `livro-caixa-backup-${todayStr()}.json`;
   const file = new File([payload], filename, { type: 'application/json' });
+  const status = document.getElementById('importStatus');
 
-  // Usa o menu de compartilhar do celular (permite salvar direto no Google Drive,
-  // iCloud, Dropbox etc.) quando disponível; senão, baixa o arquivo normalmente.
+  // Usa o menu de compartilhar do celular (permite escolher o destino: Google Drive,
+  // iCloud, Dropbox, WhatsApp etc.) quando disponível; senão, baixa o arquivo normalmente
+  // (nesse caso o navegador salva na pasta padrão de downloads do aparelho).
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'Backup Livro-Caixa', text: 'Backup dos dados do Livro-Caixa' });
+      if(status) status.textContent = `✓ Backup "${filename}" enviado para o app escolhido no menu de compartilhamento.`;
       return;
     } catch (err) {
-      if (err && err.name === 'AbortError') return; // usuário cancelou
-      // se falhar, cai no download abaixo
+      if (err && err.name === 'AbortError'){ if(status) status.textContent = 'Exportação cancelada.'; return; } // usuário cancelou
+      // se falhar (ex: sem app de destino), cai no download abaixo
     }
   }
   const blob = new Blob([payload], { type: 'application/json' });
@@ -2806,6 +2839,7 @@ async function saveToCloud(){
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+  if(status) status.textContent = `✓ Backup "${filename}" salvo na pasta de downloads padrão do navegador/aparelho.`;
 }
 
 /* =========================== import / export =========================== */
@@ -2864,8 +2898,7 @@ async function openDataSheet(){
     <p class="muted small" style="margin:-6px 0 16px 0">Importar substitui todas as contas, transações e contas a pagar atuais pelas do arquivo.</p>
     <div class="field"><span>Importar arquivo (.json)</span><input type="file" id="importFile" accept="application/json,.json"></div>
     <button class="btn-primary" id="importBtn" type="button">Importar dados</button>
-    <button class="btn-primary" data-action="save-cloud" type="button" style="margin-top:10px;">Exportar dados</button>
-    <button class="btn-primary" id="exportBtn" type="button" style="margin-top:10px;">Exportar backup (.json)</button>
+    <button class="btn-primary" data-action="save-cloud" type="button" style="margin-top:10px;">Exportar dados (.json)</button>
     <button class="btn-primary" id="openCategoriesBtn" type="button" style="margin-top:10px;">Gerenciar categorias</button>
     <p class="muted small" id="importStatus" style="margin-top:10px;"></p>
 
@@ -2949,16 +2982,6 @@ async function openDataSheet(){
 document.body.addEventListener('click', (e) => {
   if (e.target.id === 'openCategoriesBtn' || e.target.closest('#openCategoriesBtn')) { openCategoriesSheet(); return; }
   if (e.target.id === 'diagAlarmBtn' || e.target.closest('#diagAlarmBtn')) { openSearchSheet(); return; }
-
-  if (e.target.id === 'exportBtn') {
-    const payload = JSON.stringify({ accounts, transactions, bills }, null, 0);
-    const blob = new Blob([payload], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `livro-caixa-backup-${todayStr()}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  }
 
   if (e.target.id === 'importBtn') {
     const fileInput = document.getElementById('importFile');
