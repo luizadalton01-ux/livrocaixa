@@ -433,8 +433,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.36.5';
+const APP_VERSION = '1.37.0';
 const CHANGELOG = [
+  { v: '1.37.0', data: '2026-08-20', mudancas: [
+    'Adicionada a opção "Todos" em todas as caixas de mês/ano do app (extrato de conta, Transações, gráfico "Saídas por categoria"), permitindo ver todos os meses e/ou todos os anos de uma vez',
+    'Aba "A pagar" ganhou um seletor de ano (antes só tinha mês, sempre travado no ano atual), também com a opção "Todos"',
+    'Corrigido: no extrato de uma conta, os filtros de mês/ano tinham ficado espremidos dentro da linha dos botões numa alteração anterior — voltaram para a própria linha, abaixo dos botões',
+  ]},
   { v: '1.36.5', data: '2026-08-20', mudancas: [
     'Corrigido: o "Saldo total" (topo do app e cartão na Visão geral) agora usa o saldo de hoje de cada conta ativa, igual aos cartões da aba Contas — antes ele também somava lançamentos com data futura, o que fazia os dois valores não baterem',
   ]},
@@ -733,7 +738,8 @@ let acctSelectMode = false, selectedAccounts = new Set(), lastAccountsListIds = 
 let txSelectMode = false, selectedTx = new Set(), lastTxFilteredIds = [];
 let longPressTimer = null, longPressTriggered = false;
 let filterBills = 'pendentes'; // filtra a aba "A pagar" pelo campo consolidado das transações (pendentes/pagas/todas)
-let billsMonth = null; // null = mês em curso
+let billsMonth = null; // null = mês em curso; 'todos' = todos os meses
+let billsYear = null; // null = ano em curso; 'todos' = todos os anos
 let expandedGroups = new Set();
 let groupVisible = {};
 let txFilterAccountId = null;
@@ -1659,10 +1665,10 @@ function renderDashboard(){
       <div class="chart-wrap"><canvas id="barChart"></canvas></div>
     </div>
 
-    <div class="panel"><h2>Saídas por categoria <span class="muted">${MONTH_NAMES[pieSelMonth-1]}/${pieSelYear}</span></h2>
+    <div class="panel"><h2>Saídas por categoria <span class="muted">${formatPeriodLabel(pieSelMonth, pieSelYear)}</span></h2>
       <div class="period-row" style="margin-bottom:10px;">
-        <select id="pieMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===pieSelMonth?'selected':''}>${m}</option>`).join('')}</select>
-        <select id="pieYearSelect">${pieYears.map(y => `<option value="${y}" ${y===pieSelYear?'selected':''}>${y}</option>`).join('')}</select>
+        <select id="pieMonthSelect"><option value="todos" ${pieSelMonth==='todos'?'selected':''}>Todos</option>${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===pieSelMonth?'selected':''}>${m}</option>`).join('')}</select>
+        <select id="pieYearSelect"><option value="todos" ${pieSelYear==='todos'?'selected':''}>Todos</option>${pieYears.map(y => `<option value="${y}" ${y===pieSelYear?'selected':''}>${y}</option>`).join('')}</select>
       </div>
       <div class="chart-wrap" id="pieWrap"><canvas id="pieChart"></canvas></div>
     </div>
@@ -1713,9 +1719,8 @@ function renderCharts(){
 
   const now2 = new Date();
   if(!pieChartPeriod) pieChartPeriod = { month: now2.getMonth()+1, year: now2.getFullYear() };
-  const pieKey = `${pieChartPeriod.year}-${String(pieChartPeriod.month).padStart(2,'0')}`;
   const pmap = {};
-  transactions.filter(t => t.tipo==='saida' && t.data.slice(0,7)===pieKey).forEach(t => { pmap[t.categoria]=(pmap[t.categoria]||0)+t.valor; });
+  transactions.filter(t => t.tipo==='saida' && matchesPeriod(t.data, pieChartPeriod.month, pieChartPeriod.year)).forEach(t => { pmap[t.categoria]=(pmap[t.categoria]||0)+t.valor; });
   const pieEntries = Object.entries(pmap);
 
   const pieWrap = document.getElementById('pieWrap');
@@ -1832,6 +1837,20 @@ function renderDayGroupedLedger(accountId, items, selectable){
 
 /* =========================== extrato da conta (aba Contas) =========================== */
 const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+// Texto amigável pra um filtro de mês/ano que pode estar em "todos" — usado em qualquer
+// lugar que tenha esses dois seletores (extrato de conta, Transações, A pagar, gráfico de categorias).
+function formatPeriodLabel(month, year){
+  if(month === 'todos' && year === 'todos') return 'todos os períodos';
+  if(month === 'todos') return `todos os meses de ${year}`;
+  if(year === 'todos') return `${MONTH_NAMES[month-1]} (todos os anos)`;
+  return `${MONTH_NAMES[month-1]}/${year}`;
+}
+// Confere se a data (YYYY-MM-DD) de uma transação cai dentro do mês/ano selecionados,
+// tratando 'todos' como "sem filtro" naquele campo.
+function matchesPeriod(dataStr, month, year){
+  return (month === 'todos' || parseInt(dataStr.slice(5,7),10) === month)
+      && (year === 'todos' || parseInt(dataStr.slice(0,4),10) === year);
+}
 
 function statementYears(accountId){
   const years = new Set(transactions.filter(t => t.contaId === accountId).map(t => parseInt(t.data.slice(0,4), 10)));
@@ -1848,15 +1867,17 @@ function openAccountStatement(accountId, presetMonth, presetYear){
   stmtYear = presetYear || now.getFullYear();
 
   const years = statementYears(accountId);
-  if(presetYear && !years.includes(presetYear)){ years.push(presetYear); years.sort((a,b) => b-a); }
+  if(presetYear && presetYear !== 'todos' && !years.includes(presetYear)){ years.push(presetYear); years.sort((a,b) => b-a); }
   openModal(`
     <div id="stmtSticky" class="stmt-sticky">
       <p class="sheet-title">Extrato · ${esc(acc.nome)}</p>
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
         <button class="btn-primary" data-action="add-tx-to-account" data-id="${accountId}" style="flex:1;">+ Nova transação nesta conta</button>
         <button class="btn-ghost small" type="button" id="stmtSelectBtn" data-action="toggle-select-mode-tx">${txSelectMode ? 'Cancelar' : 'Selecionar'}</button>
-        <select id="stmtMonth">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
-        <select id="stmtYear">${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
+      </div>
+      <div class="stmt-filters">
+        <select id="stmtMonth"><option value="todos" ${stmtMonth==='todos'?'selected':''}>Todos</option>${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===stmtMonth?'selected':''}>${m}</option>`).join('')}</select>
+        <select id="stmtYear"><option value="todos" ${stmtYear==='todos'?'selected':''}>Todos</option>${years.map(y => `<option value="${y}" ${y===stmtYear?'selected':''}>${y}</option>`).join('')}</select>
       </div>
       <div id="stmtSummary">${renderStatementSummary()}</div>
     </div>
@@ -1866,9 +1887,9 @@ function openAccountStatement(accountId, presetMonth, presetYear){
 
 // Itens do mês selecionado, na conta do extrato aberto — usado pelo resumo (cabeçalho fixo)
 // e pela lista (parte rolável), então fica isolado aqui pra não calcular duas fórmulas diferentes.
+// stmtMonth/stmtYear podem ser 'todos', o que remove aquele filtro (mostra todos os meses e/ou anos).
 function statementItems(){
-  const monthKey = `${stmtYear}-${String(stmtMonth).padStart(2,'0')}`;
-  return transactions.filter(t => t.contaId === stmtAccountId && t.data.slice(0,7) === monthKey);
+  return transactions.filter(t => t.contaId === stmtAccountId && matchesPeriod(t.data, stmtMonth, stmtYear));
 }
 
 // Cartões de Entradas/Saídas/Saldo do mês — ficam no cabeçalho fixo (#stmtSticky).
@@ -1915,23 +1936,30 @@ function refreshTxListsAfterSelectionChange(){
   render();
 }
 
+// Selects de mês/ano que têm a opção "Todos": mantém a string 'todos' como está,
+// ou converte pra número quando é um mês/ano específico.
+function parsePeriodValue(v){ return v === 'todos' ? 'todos' : parseInt(v, 10); }
+
 document.body.addEventListener('change', (e) => {
-  if(e.target.id === 'stmtMonth'){ stmtMonth = parseInt(e.target.value, 10); refreshStatementBody(); }
-  if(e.target.id === 'stmtYear'){ stmtYear = parseInt(e.target.value, 10); refreshStatementBody(); }
+  if(e.target.id === 'stmtMonth'){ stmtMonth = parsePeriodValue(e.target.value); refreshStatementBody(); }
+  if(e.target.id === 'stmtYear'){ stmtYear = parsePeriodValue(e.target.value); refreshStatementBody(); }
   if(e.target.id === 'txMonthSelect' || e.target.id === 'txYearSelect'){
     const m = document.getElementById('txMonthSelect');
     const y = document.getElementById('txYearSelect');
-    txPeriod = { month: parseInt(m.value,10), year: parseInt(y.value,10) };
+    txPeriod = { month: parsePeriodValue(m.value), year: parsePeriodValue(y.value) };
     render();
   }
-  if(e.target.id === 'billsMonthSelect'){
-    billsMonth = parseInt(e.target.value,10);
+  if(e.target.id === 'billsMonthSelect' || e.target.id === 'billsYearSelect'){
+    const m = document.getElementById('billsMonthSelect');
+    const y = document.getElementById('billsYearSelect');
+    billsMonth = parsePeriodValue(m.value);
+    billsYear = parsePeriodValue(y.value);
     render(); return;
   }
   if(e.target.id === 'pieMonthSelect' || e.target.id === 'pieYearSelect'){
     const m = document.getElementById('pieMonthSelect');
     const y = document.getElementById('pieYearSelect');
-    pieChartPeriod = { month: parseInt(m.value,10), year: parseInt(y.value,10) };
+    pieChartPeriod = { month: parsePeriodValue(m.value), year: parsePeriodValue(y.value) };
     render();
   }
 });
@@ -1991,7 +2019,7 @@ function renderTransactions(){
     ${inativos.length ? `<div class="acct-sidebar-divider"></div>${inativos.map(sidebarItem).join('')}` : ''}
   </aside>` : '';
 
-  // filtro de período: sempre por mês/ano (seletores), mais o filtro de não consolidadas
+  // filtro de período: sempre por mês/ano (seletores, com opção "Todos"), mais o filtro de não consolidadas
   const years = txAvailableYears();
   const now = new Date();
   const selMonth = txPeriod.month || now.getMonth()+1;
@@ -2000,18 +2028,17 @@ function renderTransactions(){
   const periodControls = `
     <div class="filter-row-nowrap">
       <button class="chip chip-warn ${filterConsolidado==='pendentes'?'active':''}" data-action="toggle-filter-consolidado">Não consolidadas</button>
-      <select id="txMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
-      <select id="txYearSelect">${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
+      <select id="txMonthSelect"><option value="todos" ${selMonth==='todos'?'selected':''}>Todos</option>${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===selMonth?'selected':''}>${m}</option>`).join('')}</select>
+      <select id="txYearSelect"><option value="todos" ${selYear==='todos'?'selected':''}>Todos</option>${years.map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('')}</select>
     </div>`;
 
   // aplica filtros: conta > tipo > consolidado > período
   let filtered = transactions.filter(t => filterTipo==='todos' || t.tipo===filterTipo);
   if(txFilterAccountId) filtered = filtered.filter(t => t.contaId === txFilterAccountId);
   if(filterConsolidado === 'pendentes') filtered = filtered.filter(t => !t.consolidado);
-  const key = `${selYear}-${String(selMonth).padStart(2,'0')}`;
-  filtered = filtered.filter(t => t.data.slice(0,7) === key);
+  filtered = filtered.filter(t => matchesPeriod(t.data, selMonth, selYear));
 
-  const periodLabel = `em ${MONTH_NAMES[selMonth-1]}/${selYear}`;
+  const periodLabel = `em ${formatPeriodLabel(selMonth, selYear)}`;
   const emptyExtra = `${txFilterAccountId ? ' nesta conta' : ''}${filterConsolidado==='pendentes' ? ' não consolidadas' : ''}`;
   lastTxFilteredIds = filtered.map(t => t.id);
   const ledgerHtml = filtered.length
@@ -2037,10 +2064,10 @@ function renderTransactions(){
 function renderBills(){
   const now = new Date();
   const billsSelMonth = billsMonth || (now.getMonth()+1);
-  const billsSelYear = now.getFullYear();
-  const billsMonthKey = `${billsSelYear}-${String(billsSelMonth).padStart(2,'0')}`;
+  const billsSelYear = billsYear || now.getFullYear();
 
-  const list = transactions.filter(t => t.tipo === 'saida' && t.data.slice(0,7) === billsMonthKey)
+  const years = txAvailableYears();
+  const list = transactions.filter(t => t.tipo === 'saida' && matchesPeriod(t.data, billsSelMonth, billsSelYear))
     .filter(t => filterBills==='todas' || (filterBills==='pendentes' ? !t.consolidado : t.consolidado))
     .sort((a,b) => a.data.localeCompare(b.data));
   lastTxFilteredIds = list.map(t => t.id);
@@ -2059,13 +2086,14 @@ function renderBills(){
     <button class="chip ${filterBills===f?'active':''}" data-action="filter-bills" data-value="${f}">
       ${f[0].toUpperCase()+f.slice(1)}
     </button>`).join('')}
-    <select id="billsMonthSelect">${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
+    <select id="billsMonthSelect"><option value="todos" ${billsSelMonth==='todos'?'selected':''}>Todos</option>${MONTH_NAMES.map((m,i) => `<option value="${i+1}" ${i+1===billsSelMonth?'selected':''}>${m}</option>`).join('')}</select>
+    <select id="billsYearSelect"><option value="todos" ${billsSelYear==='todos'?'selected':''}>Todos</option>${years.map(y => `<option value="${y}" ${y===billsSelYear?'selected':''}>${y}</option>`).join('')}</select>
   </div>`;
 
   const emptyExtra = filterBills==='pendentes' ? ' pendentes' : filterBills==='pagas' ? ' pagas' : '';
   const body = list.length
     ? renderDayGroupedLedgerMulti(list)
-    : emptyState(ICONS.empty1, 'Nenhuma conta a pagar', `Sem saídas${emptyExtra} em ${MONTH_NAMES[billsSelMonth-1]}.`);
+    : emptyState(ICONS.empty1, 'Nenhuma conta a pagar', `Sem saídas${emptyExtra} em ${formatPeriodLabel(billsSelMonth, billsSelYear)}.`);
 
   return `<div class="stack">
     <div class="section-head"><h2>Contas a pagar</h2>
