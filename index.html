@@ -247,6 +247,8 @@
     padding:8px 18px calc(env(safe-area-inset-bottom,0px) + 22px) 18px; transform:translateY(100%); transition:transform 0.25s ease; }
   .modal-overlay.open .modal-sheet{ transform:translateY(0); }
   .modal-sheet.sheet-compact{ max-height:min(78vh, 560px); }
+  .modal-sheet.tone-entrada{ background:#E9F2FB; transition:background 0.2s ease; }
+  .modal-sheet.tone-saida{ background:#FBEAE8; transition:background 0.2s ease; }
   .sheet-handle{ width:36px; height:4px; background:var(--line); border-radius:4px; margin:8px auto 14px auto; }
   .sheet-title{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; margin:0 0 14px 0; display:flex; align-items:center; justify-content:space-between; }
 
@@ -428,8 +430,16 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.34.13';
+const APP_VERSION = '1.35.0';
 const CHANGELOG = [
+  { v: '1.35.0', data: '2026-08-20', mudancas: [
+    'Nova transação: adicionado o botão "Salvar e lançar outra", que salva o lançamento atual e já abre um novo com a mesma data, categoria, conta e tipo (entrada/saída/transferência)',
+    'Edição de transação: o fundo da tela agora fica em tom azul para entradas e em tom vermelho para saídas',
+    'Filtros e seletores de categoria, conta e tipo de conta agora aparecem em ordem alfabética em toda a aplicação (nova transação, conta a pagar, tipo de conta, categorias, status em "A pagar")',
+    'Aumentado o tempo de toque e segurar para entrar no modo de seleção de transações (evita ativação sem querer)',
+    'Corrigido: alterações de transações feitas na aba Transações agora sempre refletem imediatamente nas abas Visão geral e A pagar',
+    'Aba Contas: salvar, editar ou excluir uma transação dentro do extrato de uma conta agora mantém você dentro do extrato daquela conta, em vez de voltar para a tela inicial',
+  ]},
   { v: '1.34.13', data: '2026-08-19', mudancas: [
     'Topo do app: o indicador "☁ Sincronizado" agora também mostra a hora da última sincronização',
   ]},
@@ -1972,7 +1982,7 @@ function renderBills(){
     : `<button class="btn-ghost" data-action="enable-notifications" style="margin-bottom:2px;">🔔 Ativar notificações de vencimento</button>`;
 
   const filters = `<div class="filter-row">
-    ${['pendentes','pagas','todas'].map(f => `
+    ${['pagas','pendentes','todas'].map(f => `
     <button class="chip ${filterBills===f?'active':''}" data-action="filter-bills" data-value="${f}">
       ${f[0].toUpperCase()+f.slice(1)}
     </button>`).join('')}
@@ -2032,10 +2042,14 @@ const overlay = document.getElementById('modalOverlay');
 const sheet = document.getElementById('modalSheet');
 function openModal(html){
   sheet.innerHTML = `<div class="sheet-handle"></div>${html}`;
-  sheet.classList.remove('sheet-compact');
+  sheet.classList.remove('sheet-compact', 'tone-entrada', 'tone-saida');
   overlay.classList.add('open');
 }
-function closeModal(){ overlay.classList.remove('open'); }
+// Fecha o modal e sempre re-renderiza a tela de baixo — garante que qualquer alteração
+// feita enquanto o modal estava aberto (mesmo atualizações parciais, como marcar uma
+// transação como consolidada dentro do extrato) apareça imediatamente em todas as abas
+// (Visão geral, Transações, Contas, A pagar) assim que o modal é fechado.
+function closeModal(){ overlay.classList.remove('open'); render(); }
 overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); });
 
 function openAccountForm(accountId){
@@ -2048,7 +2062,7 @@ function openAccountForm(accountId){
       <div class="field"><span>Nome da conta</span><input name="nome" placeholder="Ex: Conta principal" value="${editing ? esc(acc.nome) : ''}" required></div>
       <div class="field"><span>Banco</span><input name="banco" placeholder="Ex: Nubank" value="${editing ? esc(acc.banco||'') : ''}"></div>
       <div class="field"><span>Tipo</span>
-        <select name="tipo">${['Corrente','Poupança','Carteira','Investimento'].map(t => `<option ${editing && acc.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
+        <select name="tipo">${['Carteira','Corrente','Investimento','Poupança'].map(t => `<option ${editing && acc.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
       </div>
       <div class="field"><span>Saldo inicial</span><input name="saldoInicial" type="text" inputmode="decimal" class="currency-input" value="${editing ? fmtBRL(acc.saldoInicial||0) : ''}" placeholder="R$ 0,00"></div>
       <button class="btn-primary" type="submit">${editing ? 'Salvar alterações' : 'Salvar conta'}</button>
@@ -2059,30 +2073,38 @@ function openAccountForm(accountId){
   }
 }
 
-function openTransactionForm(presetContaId){
-  const activeAccs = accounts.filter(a => a.ativo!==false);
+function openTransactionForm(presetContaId, presets){
+  const activeAccs = accounts.filter(a => a.ativo!==false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   if(!activeAccs.length){ openAccountForm(); return; }
-  const returnTo = presetContaId ? 'statement' : '';
+  const p = presets || null;
+  // returnTo só é calculado a partir do presetContaId quando não veio de um preset explícito
+  // (fluxo "salvar e lançar outra"), que sempre informa seu próprio returnTo (mesmo vazio).
+  const returnTo = p ? (p.returnTo || '') : (presetContaId ? 'statement' : '');
+  const tipoInicial = (p && p.tipo) || 'entrada';
+  const dataInicial = (p && p.data) || todayStr();
+  const catListInicial = (tipoInicial==='entrada' ? CAT_ENTRADA : CAT_SAIDA).slice().sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const catInicial = (p && p.categoria && catListInicial.includes(p.categoria)) ? p.categoria : catListInicial[0];
+  const isTransferInicial = tipoInicial === 'transferencia';
 
   openModal(`
     <p class="sheet-title">Nova transação</p>
     <form id="transactionForm">
       <input type="hidden" name="returnTo" value="${returnTo}">
       <div class="segmented segmented-3" id="tipoSeg">
-        <button type="button" class="active" data-tipo="entrada">Entrada</button>
-        <button type="button" data-tipo="saida">Saída</button>
-        <button type="button" data-tipo="transferencia">Transferência</button>
+        <button type="button" class="${tipoInicial==='entrada'?'active':''}" data-tipo="entrada">Entrada</button>
+        <button type="button" class="${tipoInicial==='saida'?'active':''}" data-tipo="saida">Saída</button>
+        <button type="button" class="${isTransferInicial?'active':''}" data-tipo="transferencia">Transferência</button>
       </div>
-      <input type="hidden" name="tipo" value="entrada">
+      <input type="hidden" name="tipo" value="${tipoInicial}">
       <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" placeholder="R$ 0,00" required></div>
-      <div class="field"><span>Data</span><input name="data" type="date" value="${todayStr()}" required></div>
+      <div class="field"><span>Data</span><input name="data" type="date" value="${dataInicial}" required></div>
       <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Supermercado"></div>
-      <div class="field" id="categoriaField"><span>Categoria</span><select name="categoria" id="catSelect">${CAT_ENTRADA.map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><span id="contaLabel">Conta</span><select name="contaId" required>
+      <div class="field ${isTransferInicial?'hidden-field':''}" id="categoriaField"><span>Categoria</span><select name="categoria" id="catSelect">${catListInicial.map(c=>`<option ${c===catInicial?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><span id="contaLabel">${isTransferInicial?'Conta de origem':'Conta'}</span><select name="contaId" required>
         <option value="" disabled ${presetContaId?'':'selected'}>Selecione</option>
         ${activeAccs.map(a=>`<option value="${a.id}" ${a.id===presetContaId?'selected':''}>${esc(a.nome)}</option>`).join('')}
       </select></div>
-      <div class="field hidden-field" id="destinoField"><span>Conta de destino</span><select name="contaDestinoId">
+      <div class="field ${isTransferInicial?'':'hidden-field'}" id="destinoField"><span>Conta de destino</span><select name="contaDestinoId">
         <option value="" disabled selected>Selecione</option>
         ${activeAccs.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}
       </select></div>
@@ -2108,6 +2130,7 @@ function openTransactionForm(presetContaId){
       </div>
 
       <button class="btn-primary" type="submit">Lançar</button>
+      <button class="btn-ghost" type="submit" data-action="save-and-new" style="width:100%; margin-top:8px; text-align:center;">Salvar e lançar outra</button>
     </form>`);
 
   document.getElementById('recorrenteCheck').addEventListener('change', (e) => {
@@ -2141,7 +2164,7 @@ function openTransactionForm(presetContaId){
       contaLabel.textContent = 'Conta';
       destSelect.required = false;
       const catSelect = document.getElementById('catSelect');
-      catSelect.innerHTML = (tipo==='entrada'?CAT_ENTRADA:CAT_SAIDA).map(c=>`<option>${c}</option>`).join('');
+      catSelect.innerHTML = (tipo==='entrada'?CAT_ENTRADA:CAT_SAIDA).slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c=>`<option>${c}</option>`).join('');
     }
   });
 }
@@ -2196,9 +2219,15 @@ function confirmDeleteTransaction(t, afterDelete){
   document.getElementById('delCancelChoiceBtn').addEventListener('click', () => { closeModal(); });
 }
 
+// Quando a edição é aberta de dentro do extrato de uma conta (aba Contas), guardamos essa
+// informação para reabrir o extrato (em vez de voltar pra tela inicial) depois de salvar,
+// excluir ou sair da edição.
+let editTxReturnToStatement = false;
+
 function openEditTransactionForm(txId){
   const t = transactions.find(x => x.id === txId);
   if(!t) return;
+  editTxReturnToStatement = !!document.getElementById('stmtResults');
   const baseCats = t.tipo === 'entrada' ? CAT_ENTRADA : CAT_SAIDA;
   const categorias = (baseCats.includes(t.categoria) ? baseCats : [t.categoria, ...baseCats])
     .slice().sort((a,b) => a.localeCompare(b, 'pt-BR'));
@@ -2246,6 +2275,8 @@ function openEditTransactionForm(txId){
       </div>
     </form>`);
   sheet.classList.add('sheet-compact');
+  sheet.classList.toggle('tone-entrada', tipoInicial === 'entrada');
+  sheet.classList.toggle('tone-saida', tipoInicial === 'saida');
 
   document.getElementById('editTipoSeg').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-tipo]'); if(!btn) return;
@@ -2253,6 +2284,8 @@ function openEditTransactionForm(txId){
     btn.classList.add('active');
     const tipo = btn.dataset.tipo;
     document.querySelector('#editTransactionForm input[name="tipo"]').value = tipo;
+    sheet.classList.toggle('tone-entrada', tipo === 'entrada');
+    sheet.classList.toggle('tone-saida', tipo === 'saida');
     const catField = document.getElementById('editCategoriaField');
     const destField = document.getElementById('editDestinoField');
     const contaLabel = document.getElementById('editContaLabel');
@@ -2272,10 +2305,17 @@ function openEditTransactionForm(txId){
     }
   });
 
-  document.getElementById('cancelEditBtn').addEventListener('click', () => { closeModal(); });
+  // Sair, salvar ou excluir: se a edição foi aberta de dentro do extrato de uma conta,
+  // volta pro extrato daquela conta em vez de fechar tudo e cair na tela inicial.
+  const backToWhereItWas = () => {
+    if(editTxReturnToStatement && stmtAccountId){ render(); openAccountStatement(stmtAccountId, stmtMonth, stmtYear); }
+    else { closeModal(); }
+  };
+
+  document.getElementById('cancelEditBtn').addEventListener('click', () => { backToWhereItWas(); });
 
   document.getElementById('deleteTxBtn').addEventListener('click', () => {
-    confirmDeleteTransaction(t, () => { closeModal(); render(); });
+    confirmDeleteTransaction(t, () => { backToWhereItWas(); });
   });
 }
 
@@ -2322,8 +2362,8 @@ document.body.addEventListener('submit', (e) => {
       fsSetDoc('transactions', original);
     }
 
-    closeModal();
-    render();
+    if(editTxReturnToStatement && stmtAccountId){ render(); openAccountStatement(stmtAccountId, stmtMonth, stmtYear); }
+    else { closeModal(); }
   }
 });
 
@@ -2334,8 +2374,8 @@ function openBillForm(){
       <div class="field"><span>Descrição</span><input name="descricao" placeholder="Ex: Aluguel" required></div>
       <div class="field"><span>Valor</span><input name="valor" type="text" inputmode="decimal" class="currency-input" placeholder="R$ 0,00" required></div>
       <div class="field"><span>Vencimento</span><input name="vencimento" type="date" value="${todayStr()}" required></div>
-      <div class="field"><span>Categoria</span><select name="categoria">${CAT_SAIDA.map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.filter(a=>a.ativo!==false).map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
+      <div class="field"><span>Categoria</span><select name="categoria">${CAT_SAIDA.slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><span>Conta para débito (opcional)</span><select name="contaId"><option value="">Nenhuma</option>${accounts.filter(a=>a.ativo!==false).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></div>
       <label class="checkbox-row"><input type="checkbox" name="recorrente"><span>Conta recorrente (mensal)</span></label>
       <button class="btn-primary" type="submit">Salvar</button>
     </form>`);
@@ -2361,11 +2401,12 @@ document.body.addEventListener('submit', (e) => {
       accounts.push(novaConta);
       fsSetDoc('accounts', novaConta);
     }
-    closeModal(); render();
+    closeModal();
   }
   if(e.target.id === 'transactionForm'){
     e.preventDefault();
     if(!confirm(CONFIRM_MSG)) return;
+    const saveAndNew = e.submitter && e.submitter.dataset.action === 'save-and-new';
     const f = new FormData(e.target);
     const tipo = f.get('tipo');
     const contaId = f.get('contaId');
@@ -2374,6 +2415,7 @@ document.body.addEventListener('submit', (e) => {
     const descricao = (f.get('descricao')||'').trim();
     const consolidadoChecked = f.get('consolidado') === 'on';
     const returnTo = f.get('returnTo');
+    const categoriaEscolhida = f.get('categoria');
     const recorrente = document.getElementById('recorrenteCheck').checked;
     const freq = f.get('frequencia');
     const indefinido = recorrente && freq === 'indefinido';
@@ -2402,7 +2444,7 @@ document.body.addEventListener('submit', (e) => {
       }
       expandedGroups.add(contaId); expandedGroups.add(contaDestinoId);
     } else {
-      const categoria = f.get('categoria');
+      const categoria = categoriaEscolhida;
       const desc = descricao || '(sem descrição)';
       const recorrenciaId = ocorrencias > 1 ? uid() : null;
       for(let i = 0; i < ocorrencias; i++){
@@ -2416,11 +2458,19 @@ document.body.addEventListener('submit', (e) => {
     }
     fsBatchSet('transactions', newTxs);
 
+    if(saveAndNew){
+      // "Salvar e lançar outra": mantém a mesma data, categoria, conta e tipo de movimentação
+      // preenchidos na próxima transação, pra agilizar o lançamento de vários itens seguidos.
+      render();
+      openTransactionForm(contaId, { tipo, data: dataBase, categoria: categoriaEscolhida, returnTo });
+      return;
+    }
+
     if(returnTo === 'statement'){
       render();
       openAccountStatement(contaId, parseInt(dataBase.slice(5,7),10), parseInt(dataBase.slice(0,4),10));
     } else {
-      closeModal(); render();
+      closeModal();
     }
   }
   if(e.target.id === 'billForm'){
@@ -2431,7 +2481,7 @@ document.body.addEventListener('submit', (e) => {
       categoria:f.get('categoria'), contaId:f.get('contaId')||'', recorrente: f.get('recorrente')==='on', pago:false };
     bills.push(novaConta);
     fsSetDoc('bills', novaConta);
-    closeModal(); render();
+    closeModal();
   }
 });
 
@@ -2694,8 +2744,9 @@ document.body.addEventListener('click', (e) => {
 
 /* =========================== toque e segure para selecionar transação =========================== */
 // Funciona em qualquer lista que use data-action="edit-transaction" (extrato de conta,
-// aba Transações, busca): segurar por ~500ms entra no modo de seleção já com aquele
+// aba Transações, busca): segurar por ~900ms entra no modo de seleção já com aquele
 // item marcado — igual a tocar em "Selecionar" e depois na transação, só que num gesto só.
+// (tempo aumentado para evitar ativação sem querer ao apenas tocar/rolar a lista)
 document.body.addEventListener('pointerdown', (e) => {
   const row = e.target.closest('[data-action="edit-transaction"]');
   if(!row) return;
@@ -2707,7 +2758,7 @@ document.body.addEventListener('pointerdown', (e) => {
     selectedTx.add(row.dataset.id);
     if(navigator.vibrate) { try { navigator.vibrate(25); } catch(e){} }
     refreshTxListsAfterSelectionChange();
-  }, 500);
+  }, 900);
 });
 ['pointerup','pointerleave','pointercancel','scroll'].forEach(evt => {
   document.body.addEventListener(evt, () => clearTimeout(longPressTimer), true);
@@ -2840,7 +2891,7 @@ function openCategoriesSheet(){
     <p class="muted small" style="margin:-6px 0 16px 0">Usadas ao lançar entradas e saídas. Excluir uma categoria não altera lançamentos já feitos com ela.</p>
 
     <div class="field"><span>Categorias de entrada</span>
-      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_ENTRADA.map(c => categoryChip(c, 'entrada')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
+      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_ENTRADA.slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c => categoryChip(c, 'entrada')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
       <div style="display:flex; gap:6px; margin-top:8px;">
         <input type="text" id="newCatEntrada" placeholder="Nova categoria de entrada" style="flex:1;">
         <button class="btn-ghost small" type="button" id="addCatEntradaBtn">Adicionar</button>
@@ -2848,7 +2899,7 @@ function openCategoriesSheet(){
     </div>
 
     <div class="field" style="margin-top:16px;"><span>Categorias de saída</span>
-      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_SAIDA.map(c => categoryChip(c, 'saida')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
+      <div style="display:flex; flex-wrap:wrap; margin-top:6px;">${CAT_SAIDA.slice().sort((a,b) => a.localeCompare(b, 'pt-BR')).map(c => categoryChip(c, 'saida')).join('') || '<span class="muted small">Nenhuma</span>'}</div>
       <div style="display:flex; gap:6px; margin-top:8px;">
         <input type="text" id="newCatSaida" placeholder="Nova categoria de saída" style="flex:1;">
         <button class="btn-ghost small" type="button" id="addCatSaidaBtn">Adicionar</button>
