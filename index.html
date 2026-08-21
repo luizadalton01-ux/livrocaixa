@@ -310,6 +310,11 @@
 
   .btn-primary{ background:linear-gradient(135deg, var(--ledger-light), var(--ledger)); color:#fff; border:none; border-radius:9px; padding:13px 18px; font-size:14.5px;
     font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:4px; box-shadow:0 3px 10px rgba(27,67,50,0.25); }
+  /* Mesmo formato/tamanho do .btn-primary (largura total, mesmo padding/fonte/cantos),
+     mas em contorno — usado para uma ação secundária que fica logo abaixo da principal
+     (ex: "Salvar e lançar outra" abaixo de "Lançar"), sem ser confundida com ela. */
+  .btn-secondary-full{ background:var(--paper); color:var(--ledger); border:2px solid var(--ledger); border-radius:9px; padding:11px 18px; font-size:14.5px;
+    font-weight:600; width:100%; font-family:'Inter',sans-serif; margin-top:8px; text-align:center; }
   .btn-ghost{ background:none; border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:12.5px;
     color:var(--ink); font-family:'Inter',sans-serif; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
   .btn-ghost.small{ padding:6px 10px; font-size:11.5px; }
@@ -433,8 +438,13 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.37.0';
+const APP_VERSION = '1.38.0';
 const CHANGELOG = [
+  { v: '1.38.0', data: '2026-08-20', mudancas: [
+    'O botão "Salvar e lançar outra" agora tem o mesmo tamanho/formato do botão "Lançar" (era um botão pequeno, em contorno)',
+    'Editar ou excluir uma transação que faz parte de uma série recorrente com lançamentos futuros agora pergunta se a alteração/exclusão vale só para esta ocorrência ou também para as futuras (antes só a exclusão perguntava isso)',
+    'Busca de transações: adicionados os filtros "Passados" e "Futuros" (além de "Todos"), que funcionam mesmo sem digitar nada no campo de busca',
+  ]},
   { v: '1.37.0', data: '2026-08-20', mudancas: [
     'Adicionada a opção "Todos" em todas as caixas de mês/ano do app (extrato de conta, Transações, gráfico "Saídas por categoria"), permitindo ver todos os meses e/ou todos os anos de uma vez',
     'Aba "A pagar" ganhou um seletor de ano (antes só tinha mês, sempre travado no ano atual), também com a opção "Todos"',
@@ -2200,7 +2210,7 @@ function openTransactionForm(presetContaId, presets){
       </div>
 
       <button class="btn-primary" type="submit">Lançar</button>
-      <button class="btn-ghost" type="submit" data-action="save-and-new" style="width:100%; margin-top:8px; text-align:center;">Salvar e lançar outra</button>
+      <button class="btn-secondary-full" type="submit" data-action="save-and-new">Salvar e lançar outra</button>
     </form>`);
   sheet.classList.toggle('tone-entrada', tipoInicial === 'entrada');
   sheet.classList.toggle('tone-saida', tipoInicial === 'saida');
@@ -2393,6 +2403,30 @@ function openEditTransactionForm(txId){
   });
 }
 
+// Propaga valor/descrição/categoria/conta pra ocorrências futuras da mesma série
+// recorrente (mantém a data e o status "consolidada" de cada uma, que são individuais).
+// Se a ocorrência futura for uma perna de transferência, atualiza as duas pontas dela.
+function applyEditToFutureOccurrences(original, changes){
+  const futures = futureOccurrencesOf(original);
+  if(!futures.length) return;
+  const touched = [];
+  futures.forEach(fx => {
+    if(fx.transferId){
+      const otherLeg = transactions.find(x => x.transferId === fx.transferId && x.id !== fx.id);
+      const saidaLeg = fx.tipo === 'saida' ? fx : otherLeg;
+      const entradaLeg = fx.tipo === 'entrada' ? fx : otherLeg;
+      if(saidaLeg){ saidaLeg.valor = changes.valor; saidaLeg.descricao = changes.descricao; if(changes.contaId) saidaLeg.contaId = changes.contaId; touched.push(saidaLeg); }
+      if(entradaLeg){ entradaLeg.valor = changes.valor; entradaLeg.descricao = changes.descricao; if(changes.contaDestinoId) entradaLeg.contaId = changes.contaDestinoId; touched.push(entradaLeg); }
+    } else {
+      fx.valor = changes.valor; fx.descricao = changes.descricao;
+      if(changes.categoria) fx.categoria = changes.categoria;
+      if(changes.contaId) fx.contaId = changes.contaId;
+      touched.push(fx);
+    }
+  });
+  fsBatchSet('transactions', touched);
+}
+
 document.body.addEventListener('submit', (e) => {
   if(e.target.id === 'editTransactionForm'){
     e.preventDefault();
@@ -2408,9 +2442,14 @@ document.body.addEventListener('submit', (e) => {
     const original = transactions.find(x => x.id === id);
     if(!original){ closeModal(); render(); return; }
     const pair = original.transferId ? transactions.find(x => x.transferId === original.transferId && x.id !== id) : null;
+    // Precisa ser calculado ANTES de alterar a data desta transação, e só faz sentido
+    // propagar a mudança adiante quando o tipo continua o mesmo (entrada/saída/transferência).
+    const tipoOriginal = original.transferId ? 'transferencia' : original.tipo;
+    const futures = (tipo === tipoOriginal) ? futureOccurrencesOf(original) : [];
+    let contaDestinoId = null;
 
     if(tipo === 'transferencia'){
-      const contaDestinoId = f.get('contaDestinoId');
+      contaDestinoId = f.get('contaDestinoId');
       if(!contaDestinoId || contaDestinoId === contaId){
         alert('Selecione uma conta de destino diferente da conta de origem.');
         return;
@@ -2436,8 +2475,32 @@ document.body.addEventListener('submit', (e) => {
       fsSetDoc('transactions', original);
     }
 
-    if(editTxReturnToStatement && stmtAccountId){ render(); openAccountStatement(stmtAccountId, stmtMonth, stmtYear); }
-    else { closeModal(); }
+    const finish = () => {
+      if(editTxReturnToStatement && stmtAccountId){ render(); openAccountStatement(stmtAccountId, stmtMonth, stmtYear); }
+      else { closeModal(); }
+    };
+
+    // Se essa transação faz parte de uma série recorrente com lançamentos futuros ainda
+    // pendentes, pergunta se a alteração deve valer só pra esta ou também pras futuras.
+    if(futures.length > 0){
+      openModal(`
+        <p class="sheet-title">Salvar lançamento recorrente</p>
+        <p class="muted small">${esc(descricao)} — ${fmtBRL(valor)}</p>
+        <p class="muted small" style="margin-top:8px;">Esta transação faz parte de uma série recorrente e tem <strong>${futures.length}</strong> lançamento(s) futuro(s) ainda pendente(s). Onde aplicar esta alteração (valor, descrição, categoria e conta)?</p>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:14px;">
+          <button class="btn-primary" type="button" id="editOnlyThisBtn">Salvar só esta</button>
+          <button class="btn-ghost" type="button" id="editThisAndFutureBtn">Salvar esta e as ${futures.length} futura(s)</button>
+        </div>`);
+      sheet.classList.add('sheet-compact');
+      document.getElementById('editOnlyThisBtn').addEventListener('click', () => { finish(); });
+      document.getElementById('editThisAndFutureBtn').addEventListener('click', () => {
+        applyEditToFutureOccurrences(original, { valor, descricao, categoria: f.get('categoria'), contaId, contaDestinoId });
+        finish();
+      });
+      return;
+    }
+
+    finish();
   }
 });
 
@@ -2675,6 +2738,11 @@ document.body.addEventListener('click', (e) => {
   if(action === 'toggle-filter-consolidado'){ filterConsolidado = filterConsolidado === 'pendentes' ? 'todos' : 'pendentes'; render(); }
   if(action === 'filter-account'){ txFilterAccountId = btn.dataset.id || null; render(); }
   if(action === 'filter-bills'){ filterBills = btn.dataset.value; render(); }
+  if(action === 'search-time-filter'){
+    searchTimeFilter = btn.dataset.value;
+    const input = document.getElementById('searchTxInput');
+    renderSearchResults(input ? input.value : '');
+  }
   if(action === 'toggle-tx-group'){
     const id = btn.dataset.id;
     if(expandedGroups.has(id)) expandedGroups.delete(id); else expandedGroups.add(id);
@@ -2774,12 +2842,22 @@ window.addEventListener('chartjs-ready', () => { if (activeTab === 'dashboard') 
 window.addEventListener('chartjs-unavailable', () => { if (activeTab === 'dashboard') renderChartsFallback(); });
 
 /* =========================== busca de transações (dashboard) =========================== */
+let searchTimeFilter = 'todos'; // 'todos' | 'passadas' | 'futuras' — filtra a busca por período, além do texto digitado
+
+function renderSearchTimeFilterChips(){
+  const opts = [['todos','Todos'], ['passadas','Passados'], ['futuras','Futuros']];
+  return `<div class="filter-row" style="margin-bottom:8px;">
+    ${opts.map(([v,label]) => `<button class="chip ${searchTimeFilter===v?'active':''}" type="button" data-action="search-time-filter" data-value="${v}">${label}</button>`).join('')}
+  </div>`;
+}
+
 function openSearchSheet(){
   openModal(`
     <p class="sheet-title">Localizar transação</p>
     <div class="field"><span>Buscar por descrição, categoria, conta ou valor</span>
       <input type="text" id="searchTxInput" placeholder="Ex: mercado, salário, aluguel, 150,00..." autofocus>
     </div>
+    <div id="searchTimeFilterBar">${renderSearchTimeFilterChips()}</div>
     <div id="searchSelectBar"></div>
     <div id="searchResults" class="ledger" style="margin-top:6px;"></div>
   `);
@@ -2792,9 +2870,22 @@ function renderSearchResults(query){
   if(!box) return;
   const q = query.trim().toLowerCase();
   const selectBar = document.getElementById('searchSelectBar');
+  const timeBar = document.getElementById('searchTimeFilterBar');
+  if(timeBar) timeBar.innerHTML = renderSearchTimeFilterChips();
+
+  // "Passados" = data antes de hoje; "Futuros" = data hoje ou depois (mesmo critério
+  // de "pendente"/"a vencer" usado no resto do app). Filtra a base ANTES do texto
+  // digitado, então funciona mesmo com o campo de busca vazio (pra só folhear as
+  // transações futuras ou passadas, sem precisar digitar nada).
+  const today = todayStr();
+  let pool = transactions;
+  if(searchTimeFilter === 'passadas') pool = pool.filter(t => t.data < today);
+  else if(searchTimeFilter === 'futuras') pool = pool.filter(t => t.data >= today);
 
   if(!q){
-    box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Digite para buscar entre ${transactions.length} transações.</p>`;
+    const count = pool.length;
+    const periodo = searchTimeFilter === 'passadas' ? ' passadas' : searchTimeFilter === 'futuras' ? ' futuras' : '';
+    box.innerHTML = `<p class="muted small" style="padding:8px 2px;">Digite para buscar entre ${count} transaç${count===1?'ão':'ões'}${periodo}.</p>`;
     lastTxFilteredIds = [];
     if(selectBar) selectBar.innerHTML = '';
     return;
@@ -2803,7 +2894,7 @@ function renderSearchResults(query){
   const accountName = (id) => { const a = accounts.find(x=>x.id===id); return a ? a.nome : ''; };
   // normaliza o valor buscado (aceita "150", "150,00", "150.00" ou "R$ 150,00")
   const qValue = q.replace(/[^0-9,.\s]/g, '').trim();
-  const matches = transactions.filter(t => {
+  const matches = pool.filter(t => {
     if((t.descricao||'').toLowerCase().includes(q)) return true;
     if((t.categoria||'').toLowerCase().includes(q)) return true;
     if(accountName(t.contaId).toLowerCase().includes(q)) return true;
