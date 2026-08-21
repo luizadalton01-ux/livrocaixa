@@ -438,8 +438,11 @@
 
 <script>
 /* =========================== versão do app =========================== */
-const APP_VERSION = '1.38.0';
+const APP_VERSION = '1.38.1';
 const CHANGELOG = [
+  { v: '1.38.1', data: '2026-08-21', mudancas: [
+    'CORREÇÃO CRÍTICA: resolvido o erro "Maximum limit of concurrent alarms 500 reached" que travava o app (no Kodular). A sincronização de alarmes agora só roda ~4s depois do último salvamento (em vez de a cada save), só agenda avisos para vencimentos dentro de 45 dias (lançamentos recorrentes muito distantes não geram alarme antes da hora) e cancela e reagenda tudo do zero a cada sincronização, para nunca acumular alarmes duplicados',
+  ]},
   { v: '1.38.0', data: '2026-08-20', mudancas: [
     'O botão "Salvar e lançar outra" agora tem o mesmo tamanho/formato do botão "Lançar" (era um botão pequeno, em contorno)',
     'Editar ou excluir uma transação que faz parte de uma série recorrente com lançamentos futuros agora pergunta se a alteração/exclusão vale só para esta ocorrência ou também para as futuras (antes só a exclusão perguntava isso)',
@@ -793,11 +796,23 @@ function idbSet(key, value){
   }));
 }
 
+// A sincronização de alarmes nativos é mais pesada (monta a lista toda de novo) e não
+// precisa rodar toda vez que qualquer coisa é salva — só depois que as alterações
+// "assentarem". Sem esse adiamento, uma sequência de salvamentos (várias transações
+// seguidas, "salvar e lançar outra", importação de backup etc.) disparava uma
+// reagendagem completa a cada save, o que podia estourar o limite de alarmes
+// simultâneos do Android e travar o app.
+let syncAlarmsDebounceTimer = null;
+function scheduleSyncAlarmsWithKodular(){
+  clearTimeout(syncAlarmsDebounceTimer);
+  syncAlarmsDebounceTimer = setTimeout(() => { syncAlarmsWithKodular(); }, 4000);
+}
+
 function persist(){
   idbSet('accounts', accounts).catch(() => {});
   idbSet('transactions', transactions).catch(() => {});
   idbSet('bills', bills).catch(() => {});
-  syncAlarmsWithKodular();
+  scheduleSyncAlarmsWithKodular();
 }
 
 function migrateData(){
@@ -1359,7 +1374,13 @@ async function syncAlarmsWithKodular(){
   // contas a pagar (bills) + transações ainda não consolidadas. Antes essa função olhava
   // só "bills", e por isso nunca agendava nada pra quem usa a aba Transações em vez da
   // aba Contas.
-  pendingItemsUnified().forEach(item => {
+  // Só agenda alarme pra quem vence nos próximos ~45 dias: um lançamento recorrente
+  // "indefinido" pode gerar dezenas de ocorrências anos no futuro, e não faz sentido (nem
+  // é seguro) pré-agendar alarme pra tudo isso de uma vez — perto de 500 alarmes
+  // simultâneos, o Android trava o app. Itens mais distantes entram na lista quando
+  // chegarem mais perto da data.
+  const ALARM_HORIZON_DAYS = 45;
+  pendingItemsUnified().filter(item => daysUntil(item.dueDate) <= ALARM_HORIZON_DAYS).forEach(item => {
     const [y, m, d] = item.dueDate.split('-').map(Number);
     const diaAntes = new Date(y, m - 1, d - 1);
     const diaVenc = new Date(y, m - 1, d);
@@ -1389,16 +1410,24 @@ async function syncAlarmsWithKodular(){
   let previous = [];
   try { const stored = await idbGetAll(); previous = stored.kodularScheduledIds || []; } catch(e){ previous = []; }
 
-  // Só cancela um alarme se ele pertencia a uma conta que agora foi paga ou excluída
-  // (ou seja, não está mais em relevantIds). NUNCA cancela só porque o horário já passou —
-  // isso evita cancelar um alarme que o Android ainda não teve chance de disparar.
-  const toCancel = previous.filter(id => !relevantIds.has(id));
+  // Cancela TODO id que já rastreamos antes — mesmo os que continuam relevantes e vão ser
+  // reagendados a seguir — em vez de só os que deixaram de ser necessários. Reagendar com
+  // o mesmo id só evita duplicar se o lado nativo tratar isso como "substituir"; cancelar
+  // tudo e reagendar do zero a cada sincronização garante que nunca sobra alarme duplicado
+  // acumulado, mesmo que essa suposição não seja verdadeira — foi o que causou o app
+  // estourar os 500 alarmes simultâneos do Android depois de poucos salvamentos. Efeito
+  // colateral aceitável: um alarme cujo horário já passou mas ainda não disparou (atraso
+  // do próprio Android) pode ser cancelado por engano; itens ainda no futuro são
+  // reagendados no mesmo envio, então não ficam sem alarme.
+  const toCancel = previous;
 
   // Limite de segurança: o Android permite no máximo 500 alarmes simultâneos por app.
   // Se por acaso houver muitos itens pendentes (dezenas de transações não consolidadas,
   // por exemplo), priorizamos agendar só os avisos mais PRÓXIMOS de acontecer, pra nunca
-  // estourar esse teto e travar o app.
-  const MAX_ALARMS_AGENDADOS = 400;
+  // chegar perto desse teto e travar o app. Fica bem abaixo de 500 (e não só um pouco
+  // abaixo) porque o cancelamento dos alarmes antigos no lado nativo pode demorar um
+  // pouco para "descontar" do total antes do próximo agendamento.
+  const MAX_ALARMS_AGENDADOS = 250;
   let desiredIds = Object.keys(desired).map(Number);
   if(desiredIds.length > MAX_ALARMS_AGENDADOS){
     desiredIds.sort((a, b) => desired[a].minutes - desired[b].minutes);
